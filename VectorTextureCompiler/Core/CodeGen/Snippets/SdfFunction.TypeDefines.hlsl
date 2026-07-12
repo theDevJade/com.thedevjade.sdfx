@@ -1,0 +1,17 @@
+#define SDFX_TYPE_CIRCLE    0
+#define SDFX_TYPE_RECT      1
+#define SDFX_TYPE_LINE      2
+#define SDFX_TYPE_BEZIER    3
+#define SDFX_TYPE_POLYGON   4
+#define SDFX_TYPE_POLYLINE  5
+#define SDFX_TYPE_ROUNDRECT 6
+#define SDFX_TYPE_CAPSULE   7
+#define SDFX_TYPE_STAR      8
+#define SDFX_TYPE_RING      9
+#define SDFX_TYPE_ARC      10
+#define SDFX_TYPE_ELLIPSE  11
+#define SDFX_TYPE_TRIANGLE 12
+#define SDFX_TYPE_HEXAGON  13
+#define SDFX_TYPE_CROSS    14
+#define SDFX_TYPE_HEART    15
+#define SDFX_TYPE_DONUT    16

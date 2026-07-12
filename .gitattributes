@@ -1,0 +1,26 @@
+# Normalize text; keep Unity YAML / metas as text for sensible diffs.
+* text=auto eol=lf
+
+*.cs text eol=lf
+*.hlsl text eol=lf
+*.compute text eol=lf
+*.shader text eol=lf
+*.cginc text eol=lf
+*.json text eol=lf
+*.txt text eol=lf
+*.md text eol=lf
+*.asmdef text eol=lf
+*.meta text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.tga binary
+*.psd binary
+*.ttf binary
+*.otf binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.onnx binary

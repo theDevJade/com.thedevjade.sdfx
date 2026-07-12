@@ -1,0 +1,33 @@
+#pragma kernel CSMain
+
+Texture2D<float4> _SourceTex;
+RWTexture2D<float> _EdgeTex;
+uint _Width;
+uint _Height;
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    uint2 p = id.xy;
+    if (p.x >= _Width - 1u || p.y >= _Height - 1u)
+    {
+        _EdgeTex[p] = 0.0;
+        return;
+    }
+
+    float3 c = _SourceTex[p].rgb;
+    float3 r = _SourceTex[p + uint2(1u, 0u)].rgb;
+    float3 d = _SourceTex[p + uint2(0u, 1u)].rgb;
+
+    float l = dot(c, float3(0.2126, 0.7152, 0.0722));
+    float lr = dot(r, float3(0.2126, 0.7152, 0.0722));
+    float ld = dot(d, float3(0.2126, 0.7152, 0.0722));
+
+    float edge = abs(l - lr) + abs(l - ld);
+    _EdgeTex[p] = edge;
+}

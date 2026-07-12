@@ -1,0 +1,10 @@
+half metallic = _Metallic * tex2D(_MetallicMap, uv).r;
+half roughness = _Roughness * tex2D(_RoughnessMap, uv).r;
+half3 L = sdfxSignals.lightDir;
+half3 H = normalize(L + viewDir);
+half ndl = sdfxSignals.ndl;
+half ndh = saturate(dot(worldNormal, H));
+half spec = pow(ndh, lerp(128.0, 4.0, roughness)) * (1.0 - roughness);
+half3 lit = sdfxSignals.lightColor * ndl + sdfxSignals.ambient;
+half3 specColor = spec * lerp(half3(0.04, 0.04, 0.04), col.rgb, metallic);
+col.rgb = col.rgb * lit * (1.0 - metallic) + col.rgb * sdfxSignals.lightColor * ndl * metallic + specColor;

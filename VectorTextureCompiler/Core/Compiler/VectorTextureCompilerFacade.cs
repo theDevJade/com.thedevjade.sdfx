@@ -1,0 +1,656 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Stopwatch = System.Diagnostics.Stopwatch;
+using SDFX.VectorTextureCompiler.Core.Baking;
+using SDFX.VectorTextureCompiler.Core.CodeGen;
+using SDFX.VectorTextureCompiler.Core.Localization;
+using SDFX.VectorTextureCompiler.Core.Modules;
+using SDFX.VectorTextureCompiler.Core.Optimize;
+using SDFX.VectorTextureCompiler.Core.Parsing;
+using SDFX.VectorTextureCompiler.Core.Primitives;
+using SDFX.VectorTextureCompiler.Editor;
+using UnityEditor;
+using UnityEngine;
+
+namespace SDFX.VectorTextureCompiler.Core.Compiler
+{
+    public enum CompileSourceType
+    {
+        Auto = 0,
+        Svg = 1,
+        Custom = 2,
+        [Obsolete("Raster compile was removed. Use Tools/SDFX/Rasterizer to convert to SVG, then compile the SVG.")]
+        Raster = 3
+    }
+
+    public enum TransparencyMode
+    {
+        Auto = 0,
+        ForceOpaque = 1,
+        ForceTransparent = 2
+    }
+
+    public sealed class CompileOptions
+    {
+        public string SourcePath { get; set; } = string.Empty;
+        public string OutputDirectory { get; set; } = string.Empty;
+        public bool BuildQuestVariant { get; set; } = true;
+        public int GridWidth { get; set; } = 32;
+        public int GridHeight { get; set; } = 32;
+        public int MaxPrimitivesPerCell { get; set; } = 8;
+        public ParserStrictness ParserStrictness { get; set; } = ParserStrictness.Strict;
+        public CoordinateModel CoordinateModel { get; set; } = CoordinateModel.Hybrid;
+        public OptimizationProfile OptimizationProfile { get; set; } = OptimizationProfile.Pc;
+        public CompileSourceType SourceType { get; set; } = CompileSourceType.Auto;
+
+        public List<string> EnabledModules { get; set; }
+
+        public string ModulePresetId { get; set; }
+
+        public int ModuleLodTier { get; set; }
+
+        public Color BackgroundColor { get; set; } = Color.white;
+
+        /// <summary>
+        /// How the generated shader's render queue/blending is chosen. Auto uses the
+        /// transparent path only when <see cref="BackgroundColor"/> is translucent -
+        /// translucent primitives alone do not require it, because layer compositing
+        /// happens inside the shader.
+        /// </summary>
+        public TransparencyMode TransparencyMode { get; set; } = TransparencyMode.Auto;
+
+        public BlendModePreset BlendMode { get; set; } = BlendModePreset.Opaque;
+
+        public List<DecalCompositor.DecalLayer> DecalLayers { get; set; }
+    }
+
+    public readonly struct CompileResult
+    {
+        public CompileResult(bool success, string message, string materialAssetPath)
+        {
+            Success = success;
+            Message = message;
+            MaterialAssetPath = materialAssetPath;
+        }
+
+        public bool Success { get; }
+        public string Message { get; }
+        public string MaterialAssetPath { get; }
+    }
+
+    public static class VectorTextureCompilerFacade
+    {
+        private const string RasterCompileRemovedMessage = "Raster compile was removed. Use Tools/SDFX/Rasterizer to convert to SVG, then compile the SVG.";
+
+        [MenuItem(SdfxLanguage.Menu.CompileAllVectorTextures)]
+        public static void CompileAll()
+        {
+            foreach (var assetPath in FindSvgAssetPaths())
+            {
+                var result = Compile(new CompileOptions { SourcePath = assetPath });
+                if (!result.Success)
+                {
+                    Debug.LogWarning(SdfxLanguage.Compiler.CompileSkipped(result.Message));
+                }
+            }
+        }
+
+        public static CompileResult Compile(CompileOptions options)
+        {
+            var totalWatch = Stopwatch.StartNew();
+
+            if (options == null)
+            {
+                return new CompileResult(false, SdfxLanguage.Compiler.OptionsNull, string.Empty);
+            }
+
+            if (LooksLikeRaster(options))
+            {
+                return new CompileResult(false, RasterCompileRemovedMessage, string.Empty);
+            }
+
+            if (string.IsNullOrWhiteSpace(options.SourcePath))
+            {
+                return new CompileResult(false, SdfxLanguage.Compiler.SourcePathEmpty, string.Empty);
+            }
+
+            if (!File.Exists(options.SourcePath))
+            {
+                return new CompileResult(false, SdfxLanguage.Compiler.SourceFileNotFound, string.Empty);
+            }
+
+            var parserOptions = new ParserOptions
+            {
+                Strictness = options.ParserStrictness,
+                CoordinateModel = options.CoordinateModel
+            };
+
+            var parseWarningCount = 0;
+            var parseErrorCount = 0;
+
+            var parseWatch = Stopwatch.StartNew();
+            var parseResult = ParseBySourceType(options, parserOptions);
+            parseWatch.Stop();
+
+            for (var i = 0; i < parseResult.Issues.Count; i++)
+            {
+                var issue = parseResult.Issues[i];
+                var label = issue.Severity == ParseIssueSeverity.Error ? "ERROR" : "WARN";
+                if (issue.Severity == ParseIssueSeverity.Error)
+                {
+                    parseErrorCount++;
+                }
+                else
+                {
+                    parseWarningCount++;
+                }
+
+                Debug.Log(SdfxLanguage.Compiler.ParseIssue(label, issue.Code.ToString(), issue.ElementName, issue.LineNumber, issue.Message));
+            }
+
+            if (parseResult.HasErrors)
+            {
+                return new CompileResult(false, SdfxLanguage.Compiler.ParseErrorsPreventedCompilation, string.Empty);
+            }
+
+            var optimizationSettings = OptimizationSettings.FromProfile(options.OptimizationProfile);
+
+            var simplifyWatch = Stopwatch.StartNew();
+            var simplified = Simplifier.Simplify(parseResult.Primitives, optimizationSettings);
+            simplifyWatch.Stop();
+
+            var booleanWatch = Stopwatch.StartNew();
+            var resolved = BooleanResolver.Resolve(simplified);
+            booleanWatch.Stop();
+
+            if (options.DecalLayers != null && options.DecalLayers.Count > 0)
+            {
+                resolved = DecalCompositor.ApplyDecals(resolved, options.DecalLayers);
+            }
+
+            var quantizeWatch = Stopwatch.StartNew();
+            var quantized = Quantizer.Quantize(resolved, optimizationSettings);
+            quantizeWatch.Stop();
+
+            var primitiveArray = quantized.ToArray();
+            long questMs = 0;
+            if (options.BuildQuestVariant && options.OptimizationProfile == OptimizationProfile.Quest)
+            {
+                var questWatch = Stopwatch.StartNew();
+                primitiveArray = QuestVariantBaker.BuildSimplifiedPrimitives(primitiveArray, QuestVariantBaker.DefaultMaxPrimitives);
+                questWatch.Stop();
+                questMs = questWatch.ElapsedMilliseconds;
+                Debug.Log(SdfxLanguage.Compiler.QuestVariantStage(questWatch.ElapsedMilliseconds, primitiveArray.Length));
+            }
+
+            var gridWatch = Stopwatch.StartNew();
+            var maxPerCellCap = options.OptimizationProfile == OptimizationProfile.Quest ? 8 : 64;
+            var maxPerCell = Mathf.Clamp(options.MaxPrimitivesPerCell, 1, maxPerCellCap);
+            SpatialGrid spatialGrid;
+            do
+            {
+                spatialGrid = SpatialGridBuilder.Build(
+                    primitiveArray,
+                    options.GridWidth,
+                    options.GridHeight,
+                    maxPerCell);
+                if (spatialGrid.DroppedPrimitiveReferences == 0 || maxPerCell >= maxPerCellCap)
+                {
+                    break;
+                }
+
+                var next = Mathf.Min(maxPerCellCap, Mathf.Max(maxPerCell + 4, maxPerCell * 2));
+                if (next <= maxPerCell)
+                {
+                    break;
+                }
+
+                Debug.Log(SdfxLanguage.Compiler.GridCapacityRaised(maxPerCell, next, spatialGrid.DroppedPrimitiveReferences));
+                maxPerCell = next;
+            }
+            while (true);
+
+            gridWatch.Stop();
+            if (spatialGrid.DroppedPrimitiveReferences > 0)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.GridClippingWarning(spatialGrid.DroppedPrimitiveReferences, maxPerCell));
+            }
+
+            var bakeWatch = Stopwatch.StartNew();
+            var primitiveTex = DataTextureBaker.BakePrimitiveTexture(primitiveArray);
+            var gridTex = DataTextureBaker.BakeGridLookupTexture(spatialGrid);
+            var gridIndexTex = DataTextureBaker.BakeGridIndexTexture(spatialGrid, 256);
+            var pathTex = DataTextureBaker.BakePathDataTexture(parseResult.PathEdges);
+            var msdfTex = MsdfBaker.BakeMsdfChannels(primitiveArray);
+            bakeWatch.Stop();
+
+            var hasTransparency = ResolveTransparency(options);
+            var sourceName = CompileOutputPaths.ResolveSourceName(options);
+            var outputDirectory = CompileOutputPaths.Resolve(options, sourceName);
+            var shaderName = "Custom/VectorTexture/Generated_" + sourceName;
+            var absoluteOutputPath = ToAbsolutePath(outputDirectory);
+
+            var codegenWatch = Stopwatch.StartNew();
+            var enabledModuleIds = options.EnabledModules;
+            if ((enabledModuleIds == null || enabledModuleIds.Count == 0) && !string.IsNullOrWhiteSpace(options.ModulePresetId))
+            {
+                enabledModuleIds = ShaderModuleRegistry.ResolvePreset(options.ModulePresetId)?.ToList();
+            }
+
+            var resolvedModules = ShaderModuleRegistry.Resolve(enabledModuleIds, options.ModuleLodTier);
+            var samplerCount = ShaderModuleRegistry.TotalExtraSamplerCount(resolvedModules);
+            if (options.OptimizationProfile == OptimizationProfile.Quest
+                && samplerCount > CorePipeline.QuestMaxSamplerBudget)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.SamplerBudgetExceeded(samplerCount, CorePipeline.QuestMaxSamplerBudget));
+            }
+
+            var conflictWarnings = ShaderModuleRegistry.ValidateSelection(enabledModuleIds);
+            foreach (var warning in conflictWarnings)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.ModuleConflict(warning));
+            }
+
+            var generationRequest = new ShaderGenerationRequest
+            {
+                ShaderName = shaderName,
+                MaxPrimitivesPerCell = maxPerCell,
+                HasTransparency = hasTransparency,
+                BackgroundColor = options.BackgroundColor,
+                BlendMode = ResolveCompileBlendMode(options),
+                Modules = resolvedModules,
+                OptimizationProfile = options.OptimizationProfile,
+                FlatTextures = FlatTextureLayout.FromTextures(primitiveTex, gridIndexTex, pathTex)
+            };
+
+            if (resolvedModules.Count > 20)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.LargeModuleShaderWarning(resolvedModules.Count));
+            }
+
+            if (resolvedModules.Any(m => string.Equals(m.Id, "grabpass", StringComparison.OrdinalIgnoreCase)))
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.GrabPassCompileWarning);
+            }
+            var generatedShaderPath = HlslGenerator.WriteShaderToDisk(absoluteOutputPath, generationRequest);
+            var shaderAssetPath = ToAssetPath(generatedShaderPath);
+            SdfxShaderVariantCache.RecordCompiledShader(shaderName, resolvedModules);
+            AssetDatabase.ImportAsset(shaderAssetPath, ImportAssetOptions.ForceUpdate);
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(shaderAssetPath);
+            if (shader == null)
+            {
+                return new CompileResult(false, SdfxLanguage.Compiler.ShaderImportFailed(shaderAssetPath), string.Empty);
+            }
+
+            if (ShaderUtil.ShaderHasError(shader))
+            {
+                var messages = ShaderUtil.GetShaderMessages(shader);
+                for (var i = 0; i < messages.Length; i++)
+                {
+                    var msg = messages[i];
+                    if ((int)msg.severity != 0)
+                    {
+                        continue;
+                    }
+
+                    return new CompileResult(
+                        false,
+                        SdfxLanguage.Compiler.ShaderCompileFailed(shaderAssetPath, msg.line, msg.message),
+                        string.Empty);
+                }
+
+                return new CompileResult(false, SdfxLanguage.Compiler.ShaderImportFailed(shaderAssetPath), string.Empty);
+            }
+
+            codegenWatch.Stop();
+
+            var primitiveAssetPath = Path.Combine(outputDirectory, sourceName + "_Primitive.asset").Replace("\\", "/");
+            var gridAssetPath = Path.Combine(outputDirectory, sourceName + "_Grid.asset").Replace("\\", "/");
+            var gridIndexAssetPath = Path.Combine(outputDirectory, sourceName + "_GridIndex.asset").Replace("\\", "/");
+            var pathAssetPath = Path.Combine(outputDirectory, sourceName + "_PathData.asset").Replace("\\", "/");
+
+            var assetWriteWatch = Stopwatch.StartNew();
+            EnsureFolderExists(outputDirectory);
+            AssetDatabase.CreateAsset(primitiveTex, primitiveAssetPath);
+            AssetDatabase.CreateAsset(gridTex, gridAssetPath);
+            AssetDatabase.CreateAsset(gridIndexTex, gridIndexAssetPath);
+            AssetDatabase.CreateAsset(pathTex, pathAssetPath);
+            var msdfAssetPath = Path.Combine(outputDirectory, sourceName + "_MSDF.asset").Replace("\\", "/");
+            AssetDatabase.CreateAsset(msdfTex, msdfAssetPath);
+
+            var materialPath = MaterialGenerator.CreateMaterialAsset(
+                shaderName,
+                outputDirectory,
+                primitiveTex,
+                gridTex,
+                gridIndexTex,
+                pathTex,
+                sourceName,
+                hasTransparency,
+                options.BackgroundColor,
+                generationRequest.ResolvedBlendMode);
+            var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+
+            var compiledAsset = ScriptableObject.CreateInstance<CompiledVectorTextureAsset>();
+            compiledAsset.sourcePath = options.SourcePath;
+            compiledAsset.primitives = primitiveArray;
+            compiledAsset.primitiveDataTexture = primitiveTex;
+            compiledAsset.gridLookupTexture = gridTex;
+            compiledAsset.gridIndexTexture = gridIndexTex;
+            compiledAsset.pathDataTexture = pathTex;
+            compiledAsset.msdfTexture = msdfTex;
+            compiledAsset.material = material;
+            compiledAsset.compileReport = BuildCompileReport(
+                options,
+                parseResult,
+                parseWarningCount,
+                parseErrorCount,
+                simplified.Count,
+                resolved.Count,
+                quantized.Count,
+                primitiveArray.Length,
+                spatialGrid.DroppedPrimitiveReferences,
+                parseWatch.ElapsedMilliseconds,
+                simplifyWatch.ElapsedMilliseconds,
+                booleanWatch.ElapsedMilliseconds,
+                quantizeWatch.ElapsedMilliseconds,
+                questMs,
+                gridWatch.ElapsedMilliseconds,
+                bakeWatch.ElapsedMilliseconds,
+                codegenWatch.ElapsedMilliseconds,
+                assetWriteWatch.ElapsedMilliseconds);
+
+            var compiledAssetPath = Path.Combine(outputDirectory, sourceName + "_Compiled.asset").Replace("\\", "/");
+            AssetDatabase.CreateAsset(compiledAsset, compiledAssetPath);
+            AssetDatabase.SaveAssets();
+            assetWriteWatch.Stop();
+
+            totalWatch.Stop();
+            Debug.Log(SdfxLanguage.Compiler.CompileSummary(
+                options.SourcePath,
+                options.OptimizationProfile.ToString(),
+                parseResult.Primitives.Count,
+                simplified.Count,
+                resolved.Count,
+                quantized.Count,
+                primitiveArray.Length,
+                parseWarningCount,
+                spatialGrid.DroppedPrimitiveReferences,
+                parseWatch.ElapsedMilliseconds,
+                simplifyWatch.ElapsedMilliseconds,
+                booleanWatch.ElapsedMilliseconds,
+                quantizeWatch.ElapsedMilliseconds,
+                gridWatch.ElapsedMilliseconds,
+                bakeWatch.ElapsedMilliseconds,
+                codegenWatch.ElapsedMilliseconds,
+                assetWriteWatch.ElapsedMilliseconds,
+                totalWatch.ElapsedMilliseconds));
+
+            return new CompileResult(true, SdfxLanguage.Compiler.CompileSucceeded, materialPath);
+        }
+
+        private static CompileReport BuildCompileReport(
+            CompileOptions options,
+            ParseResult parseResult,
+            int parseWarnings,
+            int parseErrors,
+            int simplifiedCount,
+            int resolvedCount,
+            int quantizedCount,
+            int finalCount,
+            int droppedGridReferences,
+            long parseMs,
+            long simplifyMs,
+            long booleanMs,
+            long quantizeMs,
+            long questMs,
+            long gridMs,
+            long bakeMs,
+            long codegenMs,
+            long assetMs)
+        {
+            var report = new CompileReport
+            {
+                generatedAtUtc = DateTime.UtcNow.ToString("O"),
+                sourcePath = options.SourcePath,
+                sourceType = options.SourceType.ToString(),
+                optimizationProfile = options.OptimizationProfile.ToString(),
+                parserStrictness = options.ParserStrictness.ToString(),
+                coordinateModel = options.CoordinateModel.ToString(),
+                rasterAlgorithm = string.Empty,
+                buildQuestVariant = options.BuildQuestVariant,
+                counts = new PrimitiveCountReport
+                {
+                    parsed = parseResult.Primitives.Count,
+                    simplified = simplifiedCount,
+                    resolved = resolvedCount,
+                    quantized = quantizedCount,
+                    final = finalCount
+                },
+                timings = new StageTimingReport
+                {
+                    parseMs = parseMs,
+                    simplifyMs = simplifyMs,
+                    booleanMs = booleanMs,
+                    quantizeMs = quantizeMs,
+                    questMs = questMs,
+                    gridMs = gridMs,
+                    bakeMs = bakeMs,
+                    codegenMs = codegenMs,
+                    assetMs = assetMs,
+                    totalMs = parseMs + simplifyMs + booleanMs + quantizeMs + questMs + gridMs + bakeMs + codegenMs + assetMs
+                },
+                warnings = new WarningReport
+                {
+                    parseWarnings = parseWarnings,
+                    parseErrors = parseErrors,
+                    droppedGridReferences = droppedGridReferences,
+                    totalWarnings = parseWarnings + (droppedGridReferences > 0 ? 1 : 0)
+                }
+            };
+
+            for (var i = 0; i < parseResult.Issues.Count; i++)
+            {
+                var issue = parseResult.Issues[i];
+                report.parseIssues.Add(new ParseIssueReport
+                {
+                    severity = issue.Severity.ToString(),
+                    code = issue.Code.ToString(),
+                    elementName = issue.ElementName,
+                    lineNumber = issue.LineNumber,
+                    message = issue.Message
+                });
+            }
+
+            return report;
+        }
+
+        private static string ToAbsolutePath(string assetPath)
+        {
+            if (Path.IsPathRooted(assetPath))
+            {
+                return assetPath;
+            }
+
+            var projectRoot = Directory.GetParent(Application.dataPath);
+            if (projectRoot == null)
+            {
+                throw new DirectoryNotFoundException(SdfxLanguage.Compiler.ProjectRootResolveFailed);
+            }
+
+            return Path.Combine(projectRoot.FullName, assetPath);
+        }
+
+        private static IEnumerable<string> FindSvgAssetPaths()
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var guids = AssetDatabase.FindAssets("glob:\"**/*.svg\"", new[] { "Assets" });
+            for (var i = 0; i < guids.Length; i++)
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(guids[i]);
+                if (!assetPath.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (seen.Add(assetPath))
+                {
+                    yield return assetPath;
+                }
+            }
+        }
+
+        private static ParseResult ParseBySourceType(
+            CompileOptions options,
+            ParserOptions parserOptions)
+        {
+            var sourceType = options.SourceType;
+            if (sourceType == CompileSourceType.Auto)
+            {
+                sourceType = InferSourceType(options);
+            }
+
+            switch (sourceType)
+            {
+                case (CompileSourceType)3:
+                {
+                    return RemovedRasterParseResult();
+                }
+                case CompileSourceType.Custom:
+                {
+                    var sourceText = File.ReadAllText(options.SourcePath);
+                    return CustomFormatParser.Parse(sourceText, parserOptions);
+                }
+                case CompileSourceType.Svg:
+                default:
+                {
+                    var sourceText = File.ReadAllText(options.SourcePath);
+                    return SvgParser.Parse(sourceText, parserOptions);
+                }
+            }
+        }
+
+        private static CompileSourceType InferSourceType(CompileOptions options)
+        {
+            var path = options.SourcePath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return CompileSourceType.Svg;
+            }
+
+            if (path.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            {
+                return CompileSourceType.Svg;
+            }
+
+            return CompileSourceType.Custom;
+        }
+
+        private static bool LooksLikeRaster(CompileOptions options)
+        {
+            if ((int)options.SourceType == 3)
+            {
+                return true;
+            }
+
+            var path = options.SourcePath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            return path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".tga", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".psd", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static ParseResult RemovedRasterParseResult()
+        {
+            return new ParseResult(
+                new List<Primitive>(),
+                new List<PrimitiveSourceData>(),
+                new List<ParseIssue>
+                {
+                    new ParseIssue(
+                        ParseIssueSeverity.Error,
+                        RasterCompileRemovedMessage,
+                        "raster",
+                        0,
+                        ParseIssueCode.InvalidInput)
+                });
+        }
+
+        private static string ToAssetPath(string absolutePath)
+        {
+            var normalizedAbsolute = absolutePath.Replace("\\", "/");
+            var normalizedDataPath = Application.dataPath.Replace("\\", "/");
+
+            if (!normalizedAbsolute.StartsWith(normalizedDataPath, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(SdfxLanguage.Compiler.OutputMustBeInsideAssets);
+            }
+
+            return "Assets" + normalizedAbsolute.Substring(normalizedDataPath.Length);
+        }
+
+        private static BlendModePreset ResolveCompileBlendMode(CompileOptions options)
+        {
+            if (options.BlendMode != BlendModePreset.Opaque)
+            {
+                return options.BlendMode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(options.ModulePresetId))
+            {
+                var preset = ShaderModuleRegistry.FindPreset(options.ModulePresetId);
+                if (preset?.BlendMode != null)
+                {
+                    return preset.BlendMode.Value;
+                }
+            }
+
+            return options.BlendMode;
+        }
+
+        private static bool ResolveTransparency(CompileOptions options)
+        {
+            switch (options.TransparencyMode)
+            {
+                case TransparencyMode.ForceOpaque:
+                    return false;
+                case TransparencyMode.ForceTransparent:
+                    return true;
+                default:
+                    return options.BackgroundColor.a < 0.999f;
+            }
+        }
+
+        private static void EnsureFolderExists(string assetFolder)
+        {
+            var normalized = assetFolder.Replace("\\", "/").Trim('/');
+            var segments = normalized.Split('/');
+            if (segments.Length == 0 || segments[0] != "Assets")
+            {
+                throw new InvalidOperationException(SdfxLanguage.Compiler.OutputDirectoryMustBeInsideAssets);
+            }
+
+            var current = "Assets";
+            for (var i = 1; i < segments.Length; i++)
+            {
+                var next = segments[i];
+                var candidate = current + "/" + next;
+                if (!AssetDatabase.IsValidFolder(candidate))
+                {
+                    AssetDatabase.CreateFolder(current, next);
+                }
+
+                current = candidate;
+            }
+        }
+    }
+}
