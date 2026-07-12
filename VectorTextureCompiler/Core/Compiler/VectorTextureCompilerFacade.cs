@@ -223,7 +223,6 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             var gridTex = DataTextureBaker.BakeGridLookupTexture(spatialGrid);
             var gridIndexTex = DataTextureBaker.BakeGridIndexTexture(spatialGrid, 256);
             var pathTex = DataTextureBaker.BakePathDataTexture(parseResult.PathEdges);
-            var msdfTex = MsdfBaker.BakeMsdfChannels(primitiveArray);
             bakeWatch.Stop();
 
             var hasTransparency = ResolveTransparency(options);
@@ -317,8 +316,6 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             AssetDatabase.CreateAsset(gridTex, gridAssetPath);
             AssetDatabase.CreateAsset(gridIndexTex, gridIndexAssetPath);
             AssetDatabase.CreateAsset(pathTex, pathAssetPath);
-            var msdfAssetPath = Path.Combine(outputDirectory, sourceName + "_MSDF.asset").Replace("\\", "/");
-            AssetDatabase.CreateAsset(msdfTex, msdfAssetPath);
 
             var materialPath = MaterialGenerator.CreateMaterialAsset(
                 shaderName,
@@ -340,7 +337,6 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             compiledAsset.gridLookupTexture = gridTex;
             compiledAsset.gridIndexTexture = gridIndexTex;
             compiledAsset.pathDataTexture = pathTex;
-            compiledAsset.msdfTexture = msdfTex;
             compiledAsset.material = material;
             compiledAsset.compileReport = BuildCompileReport(
                 options,

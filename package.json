@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "unity": "2022.3",
   "description": "Editor-time GPU-native vector texture compiler for generated BIRP shaders and data textures.",
+  "license": "MIT",
   "dependencies": {
     "com.unity.vectorgraphics": "2.0.0-preview.24"
   },

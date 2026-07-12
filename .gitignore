@@ -29,4 +29,6 @@ Desktop.ini
 *.log
 *.tmp
 *~
+*.csx
+_tmp*
 _comments_inventory.txt

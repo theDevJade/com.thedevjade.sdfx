@@ -58,6 +58,7 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
             var cells = new SpatialGridCell[totalCells];
             var indices = new List<int>(Math.Max(primitives.Count * 2, totalCells));
             var buckets = new List<int>[totalCells];
+            var areas = new float[primitives.Count];
 
             // Grid domain is fixed [0,1] UV; shader samples lookup with raw fragment UV.
             var domainMin = Vector2.zero;
@@ -67,6 +68,7 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
             for (var primitiveIndex = 0; primitiveIndex < primitives.Count; primitiveIndex++)
             {
                 var bounds = GetBounds(primitives[primitiveIndex]);
+                areas[primitiveIndex] = (bounds.max.x - bounds.min.x) * (bounds.max.y - bounds.min.y);
 
                 var xMin = Mathf.Clamp((int)Mathf.Floor((bounds.min.x - domainMin.x) / domainWidth * width), 0, width - 1);
                 var yMin = Mathf.Clamp((int)Mathf.Floor((bounds.min.y - domainMin.y) / domainHeight * height), 0, height - 1);
@@ -118,15 +120,21 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
 
                 var keptCount = Mathf.Min(maxPerCell, bucket.Count);
                 var dropCount = bucket.Count - keptCount;
-                var keepFrom = dropCount;
-                for (var i = keepFrom; i < bucket.Count; i++)
-                {
-                    indices.Add(bucket[i]);
-                }
-
                 if (dropCount > 0)
                 {
+                    bucket.Sort((a, b) =>
+                    {
+                        var byArea = areas[b].CompareTo(areas[a]);
+                        return byArea != 0 ? byArea : a.CompareTo(b);
+                    });
+                    bucket.RemoveRange(keptCount, dropCount);
+                    bucket.Sort();
                     droppedReferences += dropCount;
+                }
+
+                for (var i = 0; i < bucket.Count; i++)
+                {
+                    indices.Add(bucket[i]);
                 }
 
                 cells[cellIndex] = new SpatialGridCell(startIndex, keptCount);
