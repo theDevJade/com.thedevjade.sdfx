@@ -27,6 +27,12 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
 
         public FlatTextureLayout FlatTextures { get; set; }
 
+        /// <summary>
+        /// When true, emits a ForwardAdd pass that re-evaluates
+        /// only the incremental realtime-light term.
+        /// </summary>
+        public bool EnableForwardAddPass { get; set; }
+
         public IReadOnlyList<ShaderModule> ResolvedModules => Modules ?? ShaderModuleRegistry.All;
 
         public BlendModePreset ResolvedBlendMode
@@ -57,6 +63,11 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
             EmitHeader(sb, request);
             EmitCgProgram(sb, request);
             sb.AppendLine("        }");
+            if (request.EnableForwardAddPass)
+            {
+                EmitForwardAddPass(sb, request);
+            }
+
             EmitExtraPasses(sb, request);
             EmitFooter(sb);
             return sb.ToString();
@@ -224,6 +235,116 @@ _SdfxDistanceFade (""Distance Feature Fade"", Range(0, 1)) = 0
             sb.AppendLine("            Tags { \"LightMode\"=\"ForwardBase\" }");
         }
 
+        private static void EmitForwardAddPass(StringBuilder sb, ShaderGenerationRequest request)
+        {
+            sb.AppendLine();
+            sb.AppendLine("        Pass");
+            sb.AppendLine("        {");
+            sb.AppendLine("            Name \"SDFX_ForwardAdd\"");
+            sb.AppendLine("            Tags { \"LightMode\"=\"ForwardAdd\" }");
+            sb.AppendLine("            Blend One One");
+            sb.AppendLine("            ZWrite Off");
+            sb.AppendLine("            CGPROGRAM");
+            sb.AppendLine("            #pragma target 3.5");
+            sb.AppendLine("            #pragma vertex vertAdd");
+            sb.AppendLine("            #pragma fragment fragAdd");
+            sb.AppendLine("            #pragma multi_compile_instancing");
+            sb.AppendLine("            #pragma multi_compile_fwdadd_fullshadows");
+            sb.AppendLine("            #pragma shader_feature_local _SDFX_PRECISION_HALF");
+            // Deliberately no per-module shader_feature_local pragmas — this pass
+            // doesn't touch module functions, so skipping them avoids generating
+            // module-keyword variants for a pass that can't use them.
+            sb.AppendLine("            #include \"UnityCG.cginc\"");
+            sb.AppendLine("            #include \"Lighting.cginc\"");
+            sb.AppendLine("            #include \"AutoLight.cginc\"");
+            sb.AppendLine();
+
+            EmitDefines(sb, request);
+            EmitUniforms(sb, request.ResolvedModules);
+
+            AppendBlock(sb, @"
+struct appdataAdd
+{
+    float4 vertex : POSITION;
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD0;
+    UNITY_VERTEX_INPUT_INSTANCE_ID
+};
+
+struct v2fAdd
+{
+    float4 pos : SV_POSITION;
+    float2 uv : TEXCOORD0;
+    float3 worldNormal : TEXCOORD1;
+    float3 worldPos : TEXCOORD2;
+    LIGHTING_COORDS(3, 4)
+    UNITY_VERTEX_OUTPUT_STEREO
+};
+
+v2fAdd vertAdd (appdataAdd v)
+{
+    v2fAdd o;
+    UNITY_SETUP_INSTANCE_ID(v);
+    UNITY_INITIALIZE_OUTPUT(v2fAdd, o);
+    UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
+    o.uv = v.uv;
+    o.worldNormal = UnityObjectToWorldNormal(v.normal);
+    o.pos = UnityObjectToClipPos(v.vertex);
+    o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
+    TRANSFER_VERTEX_TO_FRAGMENT(o);
+    return o;
+}
+", PassIndent);
+
+            AppendBlock(sb, ShaderSnippets.DataDecodeFunctions, PassIndent);
+            sb.AppendLine();
+            AppendBlock(sb, ShaderSnippets.SdfFunctionFunctions, PassIndent);
+            sb.AppendLine();
+            AppendBlock(sb, ShaderSnippets.GridTraversalFunctions.Replace(
+                ShaderSnippets.MaxPerCellToken,
+                request.MaxPrimitivesPerCell.ToString()), PassIndent);
+            sb.AppendLine();
+            AppendBlock(sb, ShaderSnippets.LightingFunctions, PassIndent);
+            sb.AppendLine();
+
+            AppendBlock(sb, @"
+fixed4 fragAdd (v2fAdd i) : SV_Target
+{
+    UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
+
+    float2 uv = i.uv;
+    float sdfDist;
+    fixed4 art = SdfxEvaluate(uv, sdfDist);
+
+    if (_AlphaClip > 0.5)
+    {
+        if (art.a < _AlphaClipThreshold) discard;
+    }
+    else if (art.a <= 0.003)
+    {
+        discard;
+    }
+
+    float3 worldNormal = normalize(i.worldNormal);
+    float3 lightDir = SdfxLightDir(i.worldPos);
+    float atten = LIGHT_ATTENUATION(i);
+    float ndl = saturate(dot(worldNormal, lightDir));
+
+    // Only the incremental contribution of THIS light is written here.
+    // The base pass already drew background + main light + every appearance
+    // module; Blend One One adds this on top, so nothing here should
+    // re-touch background, tint grading, or module color logic.
+    float3 unpremult = art.rgb / max(art.a, 1e-4);
+    float3 lit = unpremult * _Color.rgb * SdfxLightColor() * ndl * atten * art.a * _Opacity;
+
+    return fixed4(lit, 0.0);
+}
+", PassIndent);
+
+            sb.AppendLine("            ENDCG");
+            sb.AppendLine("        }");
+        }
+
         private static void EmitExtraPasses(StringBuilder sb, ShaderGenerationRequest request)
         {
             foreach (var module in request.ResolvedModules)
@@ -341,6 +462,7 @@ _SdfxDistanceFade (""Distance Feature Fade"", Range(0, 1)) = 0
 sampler2D _PrimitiveDataTex;
 float4 _PrimitiveDataTex_TexelSize;
 sampler2D _GridLookupTex;
+float4 _GridLookupTex_TexelSize;
 sampler2D _GridIndexTex;
 float4 _GridIndexTex_TexelSize;
 sampler2D _PathDataTex;

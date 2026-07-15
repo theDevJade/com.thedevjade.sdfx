@@ -28,7 +28,7 @@ namespace SDFX.VectorTextureCompiler.Editor
         private const float CornerInset = 5f;
         private const float CornerSlide = 6f;
         private const float AnimationTime = 0.16f;
-        private const int RenderAntiAliasing = 4;
+        private const int RenderAntiAliasing = 2;
 
         private static readonly Color LayoutBackground = new Color(0.05f, 0.07f, 0.09f);
 
@@ -133,6 +133,13 @@ namespace SDFX.VectorTextureCompiler.Editor
 
         private static void HandleHover(Rect rect)
         {
+            if (_materialEditor != null)
+            {
+                _hovered = false;
+                _progress = 0f;
+                return;
+            }
+
             var eventType = Event.current.type;
             if (eventType != EventType.Repaint &&
                 eventType != EventType.MouseMove &&

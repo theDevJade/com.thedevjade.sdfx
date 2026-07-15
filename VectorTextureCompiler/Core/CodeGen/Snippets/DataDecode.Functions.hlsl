@@ -102,7 +102,10 @@ float2 SdfxRayUnitCircleFirstHit(float2 rayStart, float2 rayDir)
 float SdfxRadialAddress(float2 g, float2 focus)
 {
     g = (g - 0.5) * 2.0;
-    float2 perimeter = SdfxRayUnitCircleFirstHit(focus, normalize(g - focus));
+    float2 diffDir = g - focus;
+    float len = length(diffDir);
+    if (len < 1e-5) { return 0.0; }
+    float2 perimeter = SdfxRayUnitCircleFirstHit(focus, diffDir / len);
     float2 diff = perimeter - focus;
     if (abs(diff.x) > 0.0001) { return (g.x - focus.x) / diff.x; }
     if (abs(diff.y) > 0.0001) { return (g.y - focus.y) / diff.y; }

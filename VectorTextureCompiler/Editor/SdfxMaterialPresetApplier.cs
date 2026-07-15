@@ -13,19 +13,46 @@ namespace SDFX.VectorTextureCompiler.Editor
     {
         private const string BuiltinResourcePath = "Packages/com.thedevjade.sdfx/VectorTextureCompiler/Assets/Presets";
 
+        private static IReadOnlyList<SdfxMaterialLookPreset> cachedBuiltinPresets;
+        private static bool presetHooksRegistered;
+
         public static IReadOnlyList<SdfxMaterialLookPreset> LoadBuiltinPresets()
         {
+            EnsurePresetHooks();
+            if (cachedBuiltinPresets != null)
+            {
+                return cachedBuiltinPresets;
+            }
+
             var guids = AssetDatabase.FindAssets("t:SdfxMaterialLookPreset", new[] { BuiltinResourcePath });
             if (guids.Length == 0)
             {
-                return SdfxMaterialPresetDefaults.CreateDefaultAssets();
+                cachedBuiltinPresets = SdfxMaterialPresetDefaults.CreateDefaultAssets();
+                return cachedBuiltinPresets;
             }
 
-            return guids
+            cachedBuiltinPresets = guids
                 .Select(g => AssetDatabase.LoadAssetAtPath<SdfxMaterialLookPreset>(AssetDatabase.GUIDToAssetPath(g)))
                 .Where(p => p != null)
                 .OrderBy(p => p.DisplayName)
                 .ToArray();
+            return cachedBuiltinPresets;
+        }
+
+        public static void InvalidateBuiltinPresetCache()
+        {
+            cachedBuiltinPresets = null;
+        }
+
+        private static void EnsurePresetHooks()
+        {
+            if (presetHooksRegistered)
+            {
+                return;
+            }
+
+            presetHooksRegistered = true;
+            EditorApplication.projectChanged += InvalidateBuiltinPresetCache;
         }
 
         public static void Apply(Material material, SdfxMaterialLookPreset preset, MaterialEditor editor = null)

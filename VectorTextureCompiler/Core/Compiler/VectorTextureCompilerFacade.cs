@@ -55,13 +55,20 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
 
         /// <summary>
         /// How the generated shader's render queue/blending is chosen. Auto uses the
-        /// transparent path only when <see cref="BackgroundColor"/> is translucent -
+        /// transparent path only when <see cref="BackgroundColor"/> is translucent
         /// translucent primitives alone do not require it, because layer compositing
         /// happens inside the shader.
         /// </summary>
         public TransparencyMode TransparencyMode { get; set; } = TransparencyMode.Auto;
 
-        public BlendModePreset BlendMode { get; set; } = BlendModePreset.Opaque;
+        public BlendModePreset? BlendMode { get; set; }
+
+        /// <summary>
+        /// When true, the generated shader includes a ForwardAdd pass for extra
+        /// realtime lights. Off by default — the pass re-runs full SDF evaluation
+        /// once per additional light.
+        /// </summary>
+        public bool EnableForwardAddPass { get; set; }
 
         public List<DecalCompositor.DecalLayer> DecalLayers { get; set; }
     }
@@ -163,11 +170,6 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             var resolved = BooleanResolver.Resolve(simplified);
             booleanWatch.Stop();
 
-            if (options.DecalLayers != null && options.DecalLayers.Count > 0)
-            {
-                resolved = DecalCompositor.ApplyDecals(resolved, options.DecalLayers);
-            }
-
             var quantizeWatch = Stopwatch.StartNew();
             var quantized = Quantizer.Quantize(resolved, optimizationSettings);
             quantizeWatch.Stop();
@@ -236,6 +238,32 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 enabledModuleIds = ShaderModuleRegistry.ResolvePreset(options.ModulePresetId)?.ToList();
             }
 
+            var decalModuleIds = DecalCompositor.RequiredModuleIds(options.DecalLayers);
+            if (decalModuleIds.Count > 0)
+            {
+                enabledModuleIds = enabledModuleIds != null
+                    ? new List<string>(enabledModuleIds)
+                    : new List<string>();
+                for (var d = 0; d < decalModuleIds.Count; d++)
+                {
+                    var id = decalModuleIds[d];
+                    var alreadyPresent = false;
+                    for (var i = 0; i < enabledModuleIds.Count; i++)
+                    {
+                        if (string.Equals(enabledModuleIds[i], id, StringComparison.OrdinalIgnoreCase))
+                        {
+                            alreadyPresent = true;
+                            break;
+                        }
+                    }
+
+                    if (!alreadyPresent)
+                    {
+                        enabledModuleIds.Add(id);
+                    }
+                }
+            }
+
             var resolvedModules = ShaderModuleRegistry.Resolve(enabledModuleIds, options.ModuleLodTier);
             var samplerCount = ShaderModuleRegistry.TotalExtraSamplerCount(resolvedModules);
             if (options.OptimizationProfile == OptimizationProfile.Quest
@@ -256,7 +284,8 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 BlendMode = ResolveCompileBlendMode(options),
                 Modules = resolvedModules,
                 OptimizationProfile = options.OptimizationProfile,
-                FlatTextures = FlatTextureLayout.FromTextures(primitiveTex, gridIndexTex, pathTex)
+                FlatTextures = FlatTextureLayout.FromTextures(primitiveTex, gridIndexTex, pathTex),
+                EnableForwardAddPass = options.EnableForwardAddPass
             };
 
             if (resolvedModules.Count > 20)
@@ -324,6 +353,11 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 options.BackgroundColor,
                 generationRequest.ResolvedBlendMode);
             var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
+            DecalCompositor.ApplyToMaterial(material, options.DecalLayers);
+            if (options.DecalLayers != null && options.DecalLayers.Count > 0)
+            {
+                EditorUtility.SetDirty(material);
+            }
 
             var compiledAsset = ScriptableObject.CreateInstance<CompiledVectorTextureAsset>();
             compiledAsset.sourcePath = options.SourcePath;
@@ -357,6 +391,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             AssetDatabase.CreateAsset(compiledAsset, compiledAssetPath);
             AssetDatabase.SaveAssets();
             assetWriteWatch.Stop();
+            SdfxMaterialInspectorUI.InvalidateCompiledAssetCache();
 
             totalWatch.Stop();
             Debug.Log(SdfxLanguage.Compiler.CompileSummary(
@@ -402,6 +437,14 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             long codegenMs,
             long assetMs)
         {
+            const int highPathEdgeThreshold = 500;
+            var totalPathEdges = parseResult.PathEdges?.Count ?? 0;
+            var highPathEdgeCount = totalPathEdges > highPathEdgeThreshold;
+            if (highPathEdgeCount)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.HighPathEdgeCountWarning(totalPathEdges));
+            }
+
             var report = new CompileReport
             {
                 generatedAtUtc = DateTime.UtcNow.ToString("O"),
@@ -418,7 +461,8 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                     simplified = simplifiedCount,
                     resolved = resolvedCount,
                     quantized = quantizedCount,
-                    final = finalCount
+                    final = finalCount,
+                    pathEdges = totalPathEdges
                 },
                 timings = new StageTimingReport
                 {
@@ -438,7 +482,10 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                     parseWarnings = parseWarnings,
                     parseErrors = parseErrors,
                     droppedGridReferences = droppedGridReferences,
-                    totalWarnings = parseWarnings + (droppedGridReferences > 0 ? 1 : 0)
+                    highPathEdgeCount = highPathEdgeCount,
+                    totalWarnings = parseWarnings
+                        + (droppedGridReferences > 0 ? 1 : 0)
+                        + (highPathEdgeCount ? 1 : 0)
                 }
             };
 
@@ -591,9 +638,9 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
 
         private static BlendModePreset ResolveCompileBlendMode(CompileOptions options)
         {
-            if (options.BlendMode != BlendModePreset.Opaque)
+            if (options.BlendMode.HasValue)
             {
-                return options.BlendMode;
+                return options.BlendMode.Value;
             }
 
             if (!string.IsNullOrWhiteSpace(options.ModulePresetId))
@@ -605,7 +652,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 }
             }
 
-            return options.BlendMode;
+            return BlendModePreset.Opaque;
         }
 
         private static bool ResolveTransparency(CompileOptions options)

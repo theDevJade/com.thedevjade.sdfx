@@ -45,6 +45,9 @@ namespace SDFX.VectorTextureCompiler.Editor
         private int compileBlendMode;
         private bool sourceFoldout = true;
         private bool compileOptionsFoldout;
+        private bool enableForwardAddPass;
+        private bool decalLayersFoldout;
+        private readonly List<DecalCompositor.DecalLayer> decalLayers = new List<DecalCompositor.DecalLayer>();
 
         [MenuItem(SdfxLanguage.Menu.OpenCompilerWindow)]
         public static void Open()
@@ -100,6 +103,7 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             DrawSourceSection();
             DrawCompileOptionsSection();
+            DrawDecalLayersSection();
             DrawModuleSelection();
 
             var settingsChanged = EditorGUI.EndChangeCheck();
@@ -172,6 +176,74 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 parserStrictness = (ParserStrictness)EditorGUILayout.EnumPopup(SdfxLanguage.EditorWindow.ParserStrictnessField, parserStrictness);
                 coordinateModel = (CoordinateModel)EditorGUILayout.EnumPopup(SdfxLanguage.EditorWindow.CoordinateModelField, coordinateModel);
+                enableForwardAddPass = EditorGUILayout.Toggle(
+                    SdfxLanguage.EditorWindow.EnableForwardAddPassField,
+                    enableForwardAddPass);
+                if (enableForwardAddPass)
+                {
+                    EditorGUILayout.HelpBox(SdfxLanguage.EditorWindow.EnableForwardAddPassHelp, MessageType.Info);
+                }
+            }
+        }
+
+        private void DrawDecalLayersSection()
+        {
+            decalLayersFoldout = EditorGUILayout.Foldout(
+                decalLayersFoldout,
+                SdfxLanguage.EditorWindow.DecalLayersHeader,
+                true,
+                EditorStyles.foldoutHeader);
+            if (!decalLayersFoldout)
+            {
+                return;
+            }
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                for (var i = 0; i < decalLayers.Count; i++)
+                {
+                    var layer = decalLayers[i];
+                    EditorGUILayout.LabelField($"Layer {i}", EditorStyles.boldLabel);
+                    layer.Albedo = (Texture2D)EditorGUILayout.ObjectField(
+                        SdfxLanguage.EditorWindow.DecalAlbedoField,
+                        layer.Albedo,
+                        typeof(Texture2D),
+                        false);
+                    layer.UvOffset = EditorGUILayout.Vector2Field(
+                        SdfxLanguage.EditorWindow.DecalUvOffsetField,
+                        layer.UvOffset);
+                    layer.UvScale = EditorGUILayout.Vector2Field(
+                        SdfxLanguage.EditorWindow.DecalUvScaleField,
+                        layer.UvScale);
+                    layer.BlendStrength = EditorGUILayout.Slider(
+                        SdfxLanguage.EditorWindow.DecalBlendField,
+                        layer.BlendStrength,
+                        0f,
+                        1f);
+                    layer.BlendMode = (DecalCompositor.DecalBlendMode)EditorGUILayout.EnumPopup(
+                        SdfxLanguage.EditorWindow.DecalBlendModeField,
+                        layer.BlendMode);
+
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.FlexibleSpace();
+                        if (GUILayout.Button(SdfxLanguage.EditorWindow.DecalRemoveButton, GUILayout.Width(80f)))
+                        {
+                            decalLayers.RemoveAt(i);
+                            i--;
+                        }
+                    }
+
+                    EditorGUILayout.Space(4f);
+                }
+
+                using (new EditorGUI.DisabledScope(decalLayers.Count >= DecalCompositor.MaxDecalLayers))
+                {
+                    if (GUILayout.Button(SdfxLanguage.EditorWindow.DecalAddButton))
+                    {
+                        decalLayers.Add(new DecalCompositor.DecalLayer());
+                    }
+                }
             }
         }
 
@@ -180,7 +252,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             compileBlendMode = EditorGUILayout.Popup(
                 SdfxLanguage.EditorWindow.CompileBlendModeField,
                 Mathf.Max(0, compileBlendMode),
-                SdfxLanguage.EditorWindow.CompileBlendModeLabels);
+                SdfxLanguage.EditorWindow.CompileBlendModeOptionLabels);
         }
 
         private void DrawActionBar()
@@ -488,7 +560,7 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 if (preset.BlendMode.HasValue)
                 {
-                    compileBlendMode = (int)preset.BlendMode.Value;
+                    compileBlendMode = (int)preset.BlendMode.Value + 1;
                 }
             }
 
@@ -531,6 +603,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             SetSetting("modulePresetId", modulePresetId ?? string.Empty);
             SetSetting("moduleLodTier", moduleLodTier.ToString());
             SetSetting("compileBlendMode", compileBlendMode.ToString());
+            SetSetting("enableForwardAddPass", enableForwardAddPass.ToString());
 
             var disabledModules = ShaderModuleRegistry.All
                 .Where(m => !IsModuleSelected(m.Id))
@@ -566,6 +639,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             modulePresetId = GetSettingString("modulePresetId", modulePresetId);
             moduleLodTier = GetSettingInt("moduleLodTier", moduleLodTier);
             compileBlendMode = Mathf.Max(0, GetSettingInt("compileBlendMode", compileBlendMode));
+            enableForwardAddPass = GetSettingBool("enableForwardAddPass", enableForwardAddPass);
 
             moduleSelection.Clear();
             var disabledCsv = GetSettingString("disabledModules", string.Empty);
@@ -652,7 +726,11 @@ namespace SDFX.VectorTextureCompiler.Editor
                 ModuleLodTier = moduleLodTier,
                 BackgroundColor = backgroundColor,
                 TransparencyMode = transparencyMode,
-                BlendMode = (BlendModePreset)Mathf.Max(0, compileBlendMode)
+                BlendMode = compileBlendMode <= 0
+                    ? null
+                    : (BlendModePreset?)(compileBlendMode - 1),
+                EnableForwardAddPass = enableForwardAddPass,
+                DecalLayers = decalLayers.Count > 0 ? new List<DecalCompositor.DecalLayer>(decalLayers) : null
             };
         }
 
@@ -773,12 +851,20 @@ namespace SDFX.VectorTextureCompiler.Editor
             EditorGUILayout.LabelField(SdfxLanguage.EditorWindow.CountResolved, latestReport.counts.resolved.ToString());
             EditorGUILayout.LabelField(SdfxLanguage.EditorWindow.CountQuantized, latestReport.counts.quantized.ToString());
             EditorGUILayout.LabelField(SdfxLanguage.EditorWindow.CountFinal, latestReport.counts.final.ToString());
+            DrawStatusRow(
+                SdfxLanguage.EditorWindow.CountPathEdges,
+                latestReport.counts.pathEdges.ToString(),
+                latestReport.warnings.highPathEdgeCount ? new Color(0.95f, 0.70f, 0.25f) : Color.white);
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(SdfxLanguage.EditorWindow.WarningsHeader, EditorStyles.boldLabel);
             DrawStatusRow(SdfxLanguage.EditorWindow.ParseWarnings, latestReport.warnings.parseWarnings.ToString(), latestReport.warnings.parseWarnings > 0 ? new Color(0.95f, 0.70f, 0.25f) : Color.white);
             DrawStatusRow(SdfxLanguage.EditorWindow.ParseErrors, latestReport.warnings.parseErrors.ToString(), latestReport.warnings.parseErrors > 0 ? new Color(0.85f, 0.30f, 0.30f) : Color.white);
             DrawStatusRow(SdfxLanguage.EditorWindow.DroppedGridRefs, latestReport.warnings.droppedGridReferences.ToString(), latestReport.warnings.droppedGridReferences > 0 ? new Color(0.95f, 0.70f, 0.25f) : Color.white);
+            DrawStatusRow(
+                SdfxLanguage.EditorWindow.HighPathEdgeCount,
+                latestReport.warnings.highPathEdgeCount ? "Yes" : "No",
+                latestReport.warnings.highPathEdgeCount ? new Color(0.95f, 0.70f, 0.25f) : Color.white);
             DrawStatusRow(SdfxLanguage.EditorWindow.TotalWarnings, latestReport.warnings.totalWarnings.ToString(), latestReport.warnings.totalWarnings > 0 ? new Color(0.95f, 0.70f, 0.25f) : new Color(0.25f, 0.75f, 0.30f));
 
             EditorGUILayout.Space();

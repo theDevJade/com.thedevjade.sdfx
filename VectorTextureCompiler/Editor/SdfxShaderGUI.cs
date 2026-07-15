@@ -19,54 +19,78 @@ namespace SDFX.VectorTextureCompiler.Editor
 
         private SdfxMaterialLookPreset customPreset;
         private int presetIndex;
+        private string search = string.Empty;
+        private bool guiStateLoaded;
+        private string cachedModulesShaderName = string.Empty;
+        private List<ShaderModule> cachedCompiledModules;
 
         public static string FoldoutKeyForModule(string moduleId) => FoldoutKeyPrefix + "module." + moduleId;
 
         public static void SetAllModuleFoldouts(IReadOnlyList<ShaderModule> modules, bool expanded)
         {
-            SetFoldout("modules", expanded);
+            SetFoldoutStatic("modules", expanded);
             foreach (var group in modules.GroupBy(m => m.Category))
             {
-                SetFoldout("category." + group.Key, expanded);
+                SetFoldoutStatic("category." + group.Key, expanded);
             }
 
             foreach (var module in modules)
             {
-                SetFoldout("module." + module.Id, expanded);
+                SetFoldoutStatic("module." + module.Id, expanded);
             }
         }
 
         public override void OnGUI(MaterialEditor materialEditor, MaterialProperty[] properties)
         {
             materialEditor.SetDefaultGUIWidths();
+            EnsureGuiStateLoaded();
 
             var material = (Material)materialEditor.target;
-            var compiledModules = GetCompiledModules(properties);
+            var compiledModules = GetCompiledModules(material, properties);
             var enabledCount = SdfxMaterialInspectorUI.CountEnabledModules(material, compiledModules);
+            var compiledAsset = SdfxMaterialInspectorUI.FindCompiledAsset(material);
 
             DrawBanner(materialEditor, material);
-            SdfxMaterialInspectorUI.DrawStatusBar(material, enabledCount, compiledModules.Count);
+            SdfxMaterialInspectorUI.DrawStatusBar(material, enabledCount, compiledModules.Count, compiledAsset);
 
             var presets = SdfxMaterialPresetApplier.LoadBuiltinPresets();
-            presetIndex = SessionState.GetInt(LookPresetIndexKey, 0);
-            customPreset ??= LoadCustomPreset();
+            EditorGUI.BeginChangeCheck();
             SdfxMaterialInspectorUI.DrawPresetPanel(materialEditor, material, presets, ref presetIndex, ref customPreset);
-            SessionState.SetInt(LookPresetIndexKey, presetIndex);
-            SaveCustomPreset(customPreset);
+            if (EditorGUI.EndChangeCheck())
+            {
+                SessionState.SetInt(LookPresetIndexKey, presetIndex);
+                SaveCustomPreset(customPreset);
+            }
 
             EditorGUILayout.Space(4f);
-            var search = SessionState.GetString(SearchKey, string.Empty);
+            EditorGUI.BeginChangeCheck();
             SdfxMaterialInspectorUI.DrawSearchBar(ref search);
-            SessionState.SetString(SearchKey, search);
+            if (EditorGUI.EndChangeCheck())
+            {
+                SessionState.SetString(SearchKey, search);
+            }
 
             EditorGUILayout.Space(2f);
             DrawBaseSection(materialEditor, properties, search);
             DrawCorePipelineSection(materialEditor, properties, search);
             DrawModuleSections(materialEditor, material, properties, search, compiledModules);
-            DrawBakedDataSection(materialEditor, material, properties, search);
-            DrawDebugSection(materialEditor, properties, search);
+            DrawBakedDataSection(materialEditor, material, properties, search, compiledAsset);
+            DrawDebugSection(materialEditor, material, properties, search, compiledAsset);
             DrawAdvancedSection(materialEditor, properties, search);
-            DrawShaderActions(material, compiledModules);
+            DrawShaderActions(material, compiledModules, compiledAsset);
+        }
+
+        private void EnsureGuiStateLoaded()
+        {
+            if (guiStateLoaded)
+            {
+                return;
+            }
+
+            guiStateLoaded = true;
+            presetIndex = SessionState.GetInt(LookPresetIndexKey, 0);
+            search = SessionState.GetString(SearchKey, string.Empty);
+            customPreset ??= LoadCustomPreset();
         }
 
 
@@ -223,6 +247,7 @@ namespace SDFX.VectorTextureCompiler.Editor
                 () => SdfxMaterialInspectorUI.RequestRepaint(materialEditor));
 
             var enabledIds = SdfxMaterialInspectorUI.GetEnabledModuleIds(material, compiledModules);
+            var conflictWarnings = ShaderModuleRegistry.ValidateSelection(enabledIds);
             var visibleCount = 0;
             var drawnPropertyNames = new HashSet<string>();
 
@@ -240,7 +265,15 @@ namespace SDFX.VectorTextureCompiler.Editor
                 }
 
                 visibleCount += visibleModules.Count;
-                var enabledInCategory = categoryModules.Count(m => enabledIds.Contains(m.Id));
+                var enabledInCategory = 0;
+                for (var i = 0; i < categoryModules.Count; i++)
+                {
+                    if (enabledIds.Contains(categoryModules[i].Id))
+                    {
+                        enabledInCategory++;
+                    }
+                }
+
                 var categoryTitle = SdfxLanguage.ShaderGui.CategoryWithCount(categoryLabel, enabledInCategory, categoryModules.Count);
                 var categoryKey = "category." + category;
                 var categoryHasSearchMatch = SdfxEditorSearch.HasQuery(search)
@@ -258,7 +291,17 @@ namespace SDFX.VectorTextureCompiler.Editor
                 {
                     foreach (var module in visibleModules)
                     {
-                        DrawModule(materialEditor, material, properties, module, search, categoryLabel, enabledIds, compiledModules, drawnPropertyNames);
+                        DrawModule(
+                            materialEditor,
+                            material,
+                            properties,
+                            module,
+                            search,
+                            categoryLabel,
+                            enabledIds,
+                            conflictWarnings,
+                            compiledModules,
+                            drawnPropertyNames);
                     }
                 }
             }
@@ -277,6 +320,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             string search,
             string categoryLabel,
             List<string> enabledIds,
+            IReadOnlyList<string> conflictWarnings,
             List<ShaderModule> compiledModules,
             HashSet<string> drawnPropertyNames)
         {
@@ -359,10 +403,6 @@ namespace SDFX.VectorTextureCompiler.Editor
                     SetFoldout(foldoutKey, open);
                     SdfxMaterialInspectorUI.RequestRepaint(materialEditor);
                 }
-                else
-                {
-                    SetFoldout(foldoutKey, open);
-                }
 
                 if (GUI.Button(soloRect, SdfxLanguage.ShaderGui.ModuleSolo, EditorStyles.miniButton))
                 {
@@ -386,7 +426,7 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 if (enabled)
                 {
-                    SdfxMaterialInspectorUI.DrawModuleConflicts(enabledIds, module);
+                    SdfxMaterialInspectorUI.DrawModuleConflicts(conflictWarnings, module);
                 }
 
                 using (new EditorGUI.DisabledScope(!enabled))
@@ -417,7 +457,8 @@ namespace SDFX.VectorTextureCompiler.Editor
             MaterialEditor materialEditor,
             Material material,
             MaterialProperty[] properties,
-            string search)
+            string search,
+            CompiledVectorTextureAsset compiled)
         {
             if (!SectionVisible(
                     search,
@@ -431,8 +472,14 @@ namespace SDFX.VectorTextureCompiler.Editor
                 return;
             }
 
-            var headerMatches = SdfxEditorSearch.MatchesQuery(search, SdfxLanguage.ShaderGui.BakedDataHeader, "baked", "data", "texture");
-            if (!DrawSectionFoldout("bakedData", SdfxLanguage.ShaderGui.BakedDataHeader, defaultOpen: false, forceOpen: SdfxEditorSearch.HasQuery(search)))
+            var headerMatches = SdfxEditorSearch.MatchesQuery(
+                search,
+                SdfxLanguage.ShaderGui.BakedDataHeader,
+                "baked",
+                "data",
+                "texture");
+            var forceOpen = SdfxEditorSearch.HasQuery(search) && headerMatches;
+            if (!DrawSectionFoldout("bakedData", SdfxLanguage.ShaderGui.BakedDataHeader, defaultOpen: false, forceOpen: forceOpen))
             {
                 return;
             }
@@ -441,7 +488,6 @@ namespace SDFX.VectorTextureCompiler.Editor
             {
                 EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.BakedDataHelp, MessageType.Info);
 
-                var compiled = SdfxMaterialInspectorUI.FindCompiledAsset(material);
                 if (compiled != null)
                 {
                     using (new EditorGUILayout.HorizontalScope())
@@ -467,15 +513,28 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
         }
 
-        private static void DrawDebugSection(MaterialEditor materialEditor, MaterialProperty[] properties, string search)
+        private static void DrawDebugSection(
+            MaterialEditor materialEditor,
+            Material material,
+            MaterialProperty[] properties,
+            string search,
+            CompiledVectorTextureAsset compiled)
         {
-            if (!SectionVisible(search, properties, SdfxLanguage.ShaderGui.DebugHeader, "_Debug", "_DebugHeatmap", "_DebugDistance"))
+            if (!SectionVisible(search, properties, SdfxLanguage.ShaderGui.DebugHeader, "_Debug", "_DebugHeatmap", "_DebugDistance")
+                && !SdfxEditorSearch.MatchesQuery(search, SdfxLanguage.ShaderGui.MetricsHeader, "metrics", "profile", "primitive"))
             {
                 return;
             }
 
-            var headerMatches = SdfxEditorSearch.MatchesQuery(search, SdfxLanguage.ShaderGui.DebugHeader, "debug");
-            if (!DrawSectionFoldout("debug", SdfxLanguage.ShaderGui.DebugHeader, defaultOpen: false, forceOpen: SdfxEditorSearch.HasQuery(search)))
+            var headerMatches = SdfxEditorSearch.MatchesQuery(
+                search,
+                SdfxLanguage.ShaderGui.DebugHeader,
+                SdfxLanguage.ShaderGui.MetricsHeader,
+                "debug",
+                "metrics",
+                "profile");
+            var forceOpen = SdfxEditorSearch.HasQuery(search) && headerMatches;
+            if (!DrawSectionFoldout("debug", SdfxLanguage.ShaderGui.DebugHeader, defaultOpen: false, forceOpen: forceOpen))
             {
                 return;
             }
@@ -485,6 +544,18 @@ namespace SDFX.VectorTextureCompiler.Editor
                 DrawPropertyIfPresent(materialEditor, properties, "_Debug", search, headerMatches);
                 DrawPropertyIfPresent(materialEditor, properties, "_DebugHeatmap", search, headerMatches);
                 DrawPropertyIfPresent(materialEditor, properties, "_DebugDistance", search, headerMatches);
+
+                EditorGUILayout.Space(6f);
+                var metricsForceOpen = SdfxEditorSearch.HasQuery(search)
+                    && SdfxEditorSearch.MatchesQuery(search, SdfxLanguage.ShaderGui.MetricsHeader, "metrics", "profile", "primitive");
+                if (DrawSectionFoldout(
+                        "debug.metrics",
+                        SdfxLanguage.ShaderGui.MetricsHeader,
+                        defaultOpen: false,
+                        forceOpen: metricsForceOpen))
+                {
+                    SdfxMaterialInspectorUI.DrawPrimitiveMetrics(material, compiled);
+                }
             }
         }
 
@@ -508,7 +579,10 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
         }
 
-        private static void DrawShaderActions(Material material, IReadOnlyList<ShaderModule> compiledModules)
+        private static void DrawShaderActions(
+            Material material,
+            IReadOnlyList<ShaderModule> compiledModules,
+            CompiledVectorTextureAsset compiled)
         {
             EditorGUILayout.Space(8f);
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
@@ -516,7 +590,6 @@ namespace SDFX.VectorTextureCompiler.Editor
                 EditorGUILayout.LabelField(SdfxLanguage.ShaderGui.ShaderActionsHeader, EditorStyles.boldLabel);
                 EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.ShaderActionsHelp, MessageType.None);
 
-                var compiled = SdfxMaterialInspectorUI.FindCompiledAsset(material);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     using (new EditorGUI.DisabledScope(compiled == null))
@@ -566,11 +639,20 @@ namespace SDFX.VectorTextureCompiler.Editor
         }
 
 
-        private static List<ShaderModule> GetCompiledModules(MaterialProperty[] properties)
+        private List<ShaderModule> GetCompiledModules(Material material, MaterialProperty[] properties)
         {
-            return ShaderModuleRegistry.All
+            var shaderName = material != null && material.shader != null ? material.shader.name : string.Empty;
+            if (cachedCompiledModules != null
+                && string.Equals(cachedModulesShaderName, shaderName, System.StringComparison.Ordinal))
+            {
+                return cachedCompiledModules;
+            }
+
+            cachedModulesShaderName = shaderName;
+            cachedCompiledModules = ShaderModuleRegistry.All
                 .Where(m => FindProperty(m.ToggleProperty, properties, propertyIsMandatory: false) != null)
                 .ToList();
+            return cachedCompiledModules;
         }
 
         private static bool DrawSubSection(
@@ -695,15 +777,43 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
 
             var newOpen = EditorGUILayout.Foldout(open, title, toggleOnLabelClick: true, EditorStyles.foldoutHeader);
-            SetFoldout(key, newOpen);
+            if (newOpen != open)
+            {
+                SetFoldout(key, newOpen);
+            }
+
             return newOpen;
         }
 
+        private static readonly Dictionary<string, bool> FoldoutMemory = new Dictionary<string, bool>();
+
         private static bool GetFoldout(string key, bool defaultValue)
-            => SessionState.GetBool(FoldoutKeyPrefix + key, defaultValue);
+        {
+            var fullKey = FoldoutKeyPrefix + key;
+            if (FoldoutMemory.TryGetValue(fullKey, out var cached))
+            {
+                return cached;
+            }
+
+            var value = SessionState.GetBool(fullKey, defaultValue);
+            FoldoutMemory[fullKey] = value;
+            return value;
+        }
 
         private static void SetFoldout(string key, bool value)
-            => SessionState.SetBool(FoldoutKeyPrefix + key, value);
+            => SetFoldoutStatic(key, value);
+
+        private static void SetFoldoutStatic(string key, bool value)
+        {
+            var fullKey = FoldoutKeyPrefix + key;
+            if (FoldoutMemory.TryGetValue(fullKey, out var previous) && previous == value)
+            {
+                return;
+            }
+
+            FoldoutMemory[fullKey] = value;
+            SessionState.SetBool(fullKey, value);
+        }
 
         private static SdfxMaterialLookPreset LoadCustomPreset()
         {

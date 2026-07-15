@@ -29,6 +29,7 @@ namespace SDFX.VectorTextureCompiler.Core
         public int resolved;
         public int quantized;
         public int final;
+        public int pathEdges;
     }
 
     [Serializable]
@@ -52,6 +53,7 @@ namespace SDFX.VectorTextureCompiler.Core
         public int parseWarnings;
         public int parseErrors;
         public int droppedGridReferences;
+        public bool highPathEdgeCount;
         public int totalWarnings;
     }
 

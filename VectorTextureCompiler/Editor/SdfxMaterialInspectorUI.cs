@@ -14,7 +14,11 @@ namespace SDFX.VectorTextureCompiler.Editor
 {
     internal static class SdfxMaterialInspectorUI
     {
-        public static void DrawStatusBar(Material material, int enabledCount, int totalCount)
+        public static void DrawStatusBar(
+            Material material,
+            int enabledCount,
+            int totalCount,
+            CompiledVectorTextureAsset compiled = null)
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.helpBox))
             {
@@ -34,7 +38,7 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 GUILayout.FlexibleSpace();
 
-                var compiled = FindCompiledAsset(material);
+                compiled ??= FindCompiledAsset(material);
                 using (new EditorGUI.DisabledScope(compiled == null))
                 {
                     if (GUILayout.Button(SdfxLanguage.ShaderGui.RecompileButton, EditorStyles.miniButton, GUILayout.Width(88f)))
@@ -166,16 +170,6 @@ namespace SDFX.VectorTextureCompiler.Editor
         public static void RequestRepaint(MaterialEditor materialEditor)
         {
             materialEditor?.Repaint();
-            var editors = ActiveEditorTracker.sharedTracker.activeEditors;
-            if (editors == null)
-            {
-                return;
-            }
-
-            for (var i = 0; i < editors.Length; i++)
-            {
-                editors[i]?.Repaint();
-            }
         }
 
         public static void DrawBlendModeInfo(Material material)
@@ -192,30 +186,27 @@ namespace SDFX.VectorTextureCompiler.Editor
                 MessageType.None);
         }
 
-        public static void DrawModuleConflicts(IReadOnlyList<string> enabledIds, ShaderModule module)
+        public static void DrawModuleConflicts(IReadOnlyList<string> conflictWarnings, ShaderModule module)
         {
-            if (module.ConflictIds == null || module.ConflictIds.Count == 0 || enabledIds == null)
+            if (conflictWarnings == null || conflictWarnings.Count == 0 || module == null)
             {
                 return;
             }
 
-            if (!enabledIds.Contains(module.Id))
+            if (module.ConflictIds == null || module.ConflictIds.Count == 0)
             {
                 return;
             }
 
-            var conflicts = ShaderModuleRegistry.ValidateSelection(enabledIds);
-            var relevant = conflicts
-                .Where(w => w.IndexOf(module.DisplayName, StringComparison.OrdinalIgnoreCase) >= 0
-                    || module.ConflictIds.Any(c => w.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0))
-                .ToList();
-            if (relevant.Count == 0)
+            for (var i = 0; i < conflictWarnings.Count; i++)
             {
-                return;
-            }
+                var warning = conflictWarnings[i];
+                if (warning.IndexOf(module.DisplayName, StringComparison.OrdinalIgnoreCase) < 0
+                    && !module.ConflictIds.Any(c => warning.IndexOf(c, StringComparison.OrdinalIgnoreCase) >= 0))
+                {
+                    continue;
+                }
 
-            foreach (var warning in relevant)
-            {
                 EditorGUILayout.HelpBox(warning, MessageType.Warning);
             }
         }
@@ -257,22 +248,61 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
         }
 
+        private static readonly Dictionary<int, CompiledVectorTextureAsset> CompiledAssetByMaterialId =
+            new Dictionary<int, CompiledVectorTextureAsset>();
+
+        private static bool compiledAssetHooksRegistered;
+        private static List<(string path, CompiledVectorTextureAsset asset)> compiledAssetIndex;
+        private static double compiledAssetIndexBuiltAt;
+
+        public static void InvalidateCompiledAssetCache()
+        {
+            CompiledAssetByMaterialId.Clear();
+            compiledAssetIndex = null;
+        }
+
         public static CompiledVectorTextureAsset FindCompiledAsset(Material material)
         {
+            EnsureCompiledAssetHooks();
+
             if (material == null)
             {
                 return null;
             }
 
+            var materialId = material.GetInstanceID();
+            if (CompiledAssetByMaterialId.TryGetValue(materialId, out var cached))
+            {
+                return cached;
+            }
+
+            var found = FindCompiledAssetUncached(material);
+            CompiledAssetByMaterialId[materialId] = found;
+            return found;
+        }
+
+        private static void EnsureCompiledAssetHooks()
+        {
+            if (compiledAssetHooksRegistered)
+            {
+                return;
+            }
+
+            compiledAssetHooksRegistered = true;
+            EditorApplication.projectChanged += InvalidateCompiledAssetCache;
+        }
+
+        private static CompiledVectorTextureAsset FindCompiledAssetUncached(Material material)
+        {
             CompiledVectorTextureAsset textureMatch = null;
             var prim = material.HasProperty("_PrimitiveDataTex")
                 ? material.GetTexture("_PrimitiveDataTex")
                 : null;
 
-            var guids = AssetDatabase.FindAssets("t:CompiledVectorTextureAsset");
-            foreach (var guid in guids)
+            var index = GetOrBuildCompiledAssetIndex();
+            for (var i = 0; i < index.Count; i++)
             {
-                var asset = AssetDatabase.LoadAssetAtPath<CompiledVectorTextureAsset>(AssetDatabase.GUIDToAssetPath(guid));
+                var asset = index[i].asset;
                 if (asset == null)
                 {
                     continue;
@@ -292,6 +322,31 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
 
             return textureMatch;
+        }
+
+        private static List<(string path, CompiledVectorTextureAsset asset)> GetOrBuildCompiledAssetIndex()
+        {
+            var now = EditorApplication.timeSinceStartup;
+            if (compiledAssetIndex != null && now - compiledAssetIndexBuiltAt < 5.0)
+            {
+                return compiledAssetIndex;
+            }
+
+            var guids = AssetDatabase.FindAssets("t:CompiledVectorTextureAsset");
+            var index = new List<(string path, CompiledVectorTextureAsset asset)>(guids.Length);
+            for (var i = 0; i < guids.Length; i++)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+                var asset = AssetDatabase.LoadAssetAtPath<CompiledVectorTextureAsset>(path);
+                if (asset != null)
+                {
+                    index.Add((path, asset));
+                }
+            }
+
+            compiledAssetIndex = index;
+            compiledAssetIndexBuiltAt = now;
+            return index;
         }
 
         public static int CountEnabledModules(Material material, IReadOnlyList<ShaderModule> modules)
@@ -407,6 +462,134 @@ namespace SDFX.VectorTextureCompiler.Editor
                     material.DisableKeyword(module.Keyword);
                 }
             }
+        }
+
+        private static Vector2 metricsScroll;
+        private const int MetricsMaxRows = 48;
+
+        public static void DrawPrimitiveMetrics(Material material, CompiledVectorTextureAsset compiled)
+        {
+            EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.MetricsHelp, MessageType.None);
+
+            if (compiled == null)
+            {
+                EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.MetricsNoCompiled, MessageType.Info);
+                return;
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button(SdfxLanguage.ShaderGui.MetricsProfileButton, GUILayout.Height(24f)))
+                {
+                    SdfxPrimitiveMetricsProfiler.Profile(compiled, material, sampleMaterialGpu: false);
+                }
+
+                using (new EditorGUI.DisabledScope(material == null))
+                {
+                    if (GUILayout.Button(SdfxLanguage.ShaderGui.MetricsProfileWithGpuButton, GUILayout.Height(24f)))
+                    {
+                        SdfxPrimitiveMetricsProfiler.Profile(compiled, material, sampleMaterialGpu: true);
+                    }
+                }
+            }
+
+            var session = SdfxPrimitiveMetricsProfiler.LastSession;
+            if (session == null || session.Primitives == null || session.Primitives.Length == 0)
+            {
+                EditorGUILayout.LabelField(SdfxLanguage.ShaderGui.MetricsEmpty, EditorStyles.miniLabel);
+                return;
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button(SdfxLanguage.ShaderGui.MetricsCopyButton, GUILayout.Height(22f)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = SdfxPrimitiveMetricsProfiler.BuildClipboardReport(session);
+                    Debug.Log(SdfxLanguage.ShaderGui.MetricsCopied);
+                }
+            }
+
+            EditorGUILayout.LabelField(
+                SdfxLanguage.ShaderGui.MetricsCapturedAt(session.CapturedAtUtc.ToString("HH:mm:ss")),
+                EditorStyles.miniLabel);
+
+            if (session.IsBenchmark && session.Passes > 0)
+            {
+                EditorGUILayout.LabelField(
+                    SdfxLanguage.ShaderGui.MetricsBenchmarkPasses(session.Passes),
+                    EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.LabelField(
+                SdfxLanguage.ShaderGui.MetricsTotalCpu(session.TotalCpuMilliseconds, session.Primitives.Length),
+                EditorStyles.miniLabel);
+
+            if (session.MaterialGpuMilliseconds >= 0.0)
+            {
+                EditorGUILayout.LabelField(
+                    SdfxLanguage.ShaderGui.MetricsMaterialGpu(session.MaterialGpuMilliseconds),
+                    EditorStyles.miniLabel);
+                if (session.MaterialGpuMinMilliseconds >= 0.0 && session.MaterialGpuMaxMilliseconds >= 0.0)
+                {
+                    EditorGUILayout.LabelField(
+                        SdfxLanguage.ShaderGui.MetricsMaterialGpuRange(
+                            session.MaterialGpuMinMilliseconds,
+                            session.MaterialGpuMaxMilliseconds),
+                        EditorStyles.miniLabel);
+                }
+            }
+
+            if (session.FrameTimingCpuMilliseconds >= 0.0 || session.FrameTimingGpuMilliseconds >= 0.0)
+            {
+                EditorGUILayout.LabelField(
+                    SdfxLanguage.ShaderGui.MetricsFrameTiming(
+                        session.FrameTimingCpuMilliseconds,
+                        session.FrameTimingGpuMilliseconds),
+                    EditorStyles.miniLabel);
+            }
+
+            if (!string.IsNullOrWhiteSpace(session.Status))
+            {
+                EditorGUILayout.LabelField(session.Status, EditorStyles.wordWrappedMiniLabel);
+            }
+
+            var showCount = Mathf.Min(MetricsMaxRows, session.Primitives.Length);
+            if (showCount < session.Primitives.Length)
+            {
+                EditorGUILayout.LabelField(
+                    SdfxLanguage.ShaderGui.MetricsShowingTop(showCount, session.Primitives.Length),
+                    EditorStyles.miniLabel);
+            }
+
+            using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
+            {
+                GUILayout.Label(SdfxLanguage.ShaderGui.MetricsColIndex, EditorStyles.miniLabel, GUILayout.Width(36f));
+                GUILayout.Label(SdfxLanguage.ShaderGui.MetricsColType, EditorStyles.miniLabel, GUILayout.Width(88f));
+                GUILayout.Label(SdfxLanguage.ShaderGui.MetricsColEdges, EditorStyles.miniLabel, GUILayout.Width(48f));
+                GUILayout.Label(SdfxLanguage.ShaderGui.MetricsColCpu, EditorStyles.miniLabel, GUILayout.Width(64f));
+                GUILayout.Label(SdfxLanguage.ShaderGui.MetricsColShare, EditorStyles.miniLabel);
+            }
+
+            metricsScroll = EditorGUILayout.BeginScrollView(
+                metricsScroll,
+                GUILayout.MinHeight(80f),
+                GUILayout.MaxHeight(220f));
+            for (var i = 0; i < showCount; i++)
+            {
+                var row = session.Primitives[i];
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label(row.Index.ToString(), EditorStyles.miniLabel, GUILayout.Width(36f));
+                    GUILayout.Label(row.Type.ToString(), EditorStyles.miniLabel, GUILayout.Width(88f));
+                    GUILayout.Label(row.PathEdges.ToString(), EditorStyles.miniLabel, GUILayout.Width(48f));
+                    GUILayout.Label(row.CpuMicroseconds.ToString("0.0"), EditorStyles.miniLabel, GUILayout.Width(64f));
+
+                    var shareRect = GUILayoutUtility.GetRect(40f, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+                    EditorGUI.ProgressBar(shareRect, Mathf.Clamp01(row.ShareOfTotal), $"{row.ShareOfTotal * 100f:0.0}%");
+                }
+            }
+
+            EditorGUILayout.EndScrollView();
         }
 
         private static void ApplyDefault(Material material, ModuleProperty prop)

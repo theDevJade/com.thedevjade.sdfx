@@ -90,15 +90,35 @@ float SdfxSdfPathStroke(int start, int count, float2 uv, float radius)
     return sqrt(dSq) - radius;
 }
 
+#define SDFX_PATH_SKIP_DIST 1e5
+
+bool SdfxPathOutsideAabb(float2 uv, float2 pos, float2 size)
+{
+    float2 halfExt = size * 0.5;
+    float2 center = pos + halfExt;
+    float2 outside = max(abs(uv - center) - halfExt, 0.0);
+    return dot(outside, outside) > 0.0;
+}
+
 float SdfxEvalPrimitive(SdfxPrimitive p, float2 uv)
 {
     if (p.type == SDFX_TYPE_POLYGON && p.pathCount > 0)
     {
+        if (SdfxPathOutsideAabb(uv, p.pos, p.size))
+        {
+            return SDFX_PATH_SKIP_DIST;
+        }
+
         return SdfxSdfPathFill(p.pathStart, p.pathCount, uv);
     }
 
     if (p.type == SDFX_TYPE_POLYLINE)
     {
+        if (SdfxPathOutsideAabb(uv, p.pos, p.size))
+        {
+            return SDFX_PATH_SKIP_DIST;
+        }
+
         return SdfxSdfPathStroke(p.pathStart, p.pathCount, uv, p.strokeRadius);
     }
 
