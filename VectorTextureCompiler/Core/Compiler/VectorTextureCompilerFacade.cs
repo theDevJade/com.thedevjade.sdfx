@@ -21,7 +21,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
         Auto = 0,
         Svg = 1,
         Custom = 2,
-        [Obsolete("Raster compile was removed. Use Tools/SDFX/Rasterizer to convert to SVG, then compile the SVG.")]
+        [Obsolete("Raster compile was removed. Use SDFX/Rasterizer to convert to SVG, then compile the SVG.")]
         Raster = 3
     }
 
@@ -82,8 +82,6 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
 
     public static class VectorTextureCompilerFacade
     {
-        private const string RasterCompileRemovedMessage = "Raster compile was removed. Use Tools/SDFX/Rasterizer to convert to SVG, then compile the SVG.";
-
         [MenuItem(SdfxLanguage.Menu.CompileAllVectorTextures)]
         public static void CompileAll()
         {
@@ -108,7 +106,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
 
             if (LooksLikeRaster(options))
             {
-                return new CompileResult(false, RasterCompileRemovedMessage, string.Empty);
+                return new CompileResult(false, SdfxLanguage.Compiler.RasterCompileRemoved, string.Empty);
             }
 
             if (string.IsNullOrWhiteSpace(options.SourcePath))
@@ -247,10 +245,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             }
 
             var conflictWarnings = ShaderModuleRegistry.ValidateSelection(enabledModuleIds);
-            foreach (var warning in conflictWarnings)
-            {
-                Debug.LogWarning(SdfxLanguage.Compiler.ModuleConflict(warning));
-            }
+            LogModuleConflictWarnings(conflictWarnings);
 
             var generationRequest = new ShaderGenerationRequest
             {
@@ -574,7 +569,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 {
                     new ParseIssue(
                         ParseIssueSeverity.Error,
-                        RasterCompileRemovedMessage,
+                        SdfxLanguage.Compiler.RasterCompileRemoved,
                         "raster",
                         0,
                         ParseIssueCode.InvalidInput)
@@ -624,6 +619,28 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 default:
                     return options.BackgroundColor.a < 0.999f;
             }
+        }
+
+        private static void LogModuleConflictWarnings(IReadOnlyList<string> conflictWarnings)
+        {
+            if (conflictWarnings == null || conflictWarnings.Count == 0)
+            {
+                return;
+            }
+
+            const int maxListed = 4;
+            if (conflictWarnings.Count <= maxListed)
+            {
+                for (var i = 0; i < conflictWarnings.Count; i++)
+                {
+                    Debug.LogWarning(SdfxLanguage.Compiler.ModuleConflict(conflictWarnings[i]));
+                }
+
+                return;
+            }
+
+            var examples = string.Join("; ", conflictWarnings.Take(maxListed));
+            Debug.LogWarning(SdfxLanguage.Compiler.ModuleConflictsSummary(conflictWarnings.Count, examples));
         }
 
         private static void EnsureFolderExists(string assetFolder)

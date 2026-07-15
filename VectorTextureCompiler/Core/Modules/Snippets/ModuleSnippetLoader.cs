@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEngine;
 
 namespace SDFX.VectorTextureCompiler.Core.Modules.Snippets
@@ -25,7 +26,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules.Snippets
             if (!TryLoad(relativePath, out var text))
             {
                 var fullPath = ResolvePath(relativePath);
-                throw new FileNotFoundException($"SDFX module snippet not found: {fullPath}", fullPath);
+                throw new FileNotFoundException(SdfxLanguage.Compiler.ModuleSnippetNotFound(fullPath), fullPath);
             }
 
             return text;

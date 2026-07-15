@@ -1,7 +1,7 @@
 {
   "name": "com.thedevjade.sdfx",
   "displayName": "SDFX",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "unity": "2022.3",
   "description": "Editor-time GPU-native vector texture compiler for generated BIRP shaders and data textures.",
   "license": "MIT",

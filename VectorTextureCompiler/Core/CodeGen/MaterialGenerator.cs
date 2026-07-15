@@ -1,5 +1,6 @@
 using System.IO;
 using SDFX.VectorTextureCompiler.Core.CodeGen;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEditor;
 using UnityEngine;
 
@@ -22,7 +23,7 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
             var shader = Shader.Find(shaderName);
             if (shader == null)
             {
-                throw new System.IO.FileNotFoundException("Generated shader not found in project", shaderName);
+                throw new System.IO.FileNotFoundException(SdfxLanguage.Compiler.GeneratedShaderNotFound, shaderName);
             }
 
             var material = new Material(shader);

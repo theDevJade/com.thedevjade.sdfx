@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using SDFX.VectorTextureCompiler.Core.Optimize;
 using SDFX.VectorTextureCompiler.Core.Primitives;
 using UnityEngine;
@@ -53,7 +54,8 @@ namespace SDFX.VectorTextureCompiler.Core.Baking
             var count = Math.Min(primitives.Length, maxPrimitives);
             if (primitives.Length > maxPrimitives)
             {
-                Debug.LogWarning($"SDFX: Primitive texture {width}x{height} fits {maxPrimitives} primitives; {primitives.Length - maxPrimitives} were dropped. Use the auto-sized bake overload.");
+                Debug.LogWarning(SdfxLanguage.Compiler.PrimitiveTextureDropped(
+                    width, height, maxPrimitives, primitives.Length - maxPrimitives));
             }
 
             for (var i = 0; i < count; i++)
@@ -61,7 +63,7 @@ namespace SDFX.VectorTextureCompiler.Core.Baking
                 var baseIdx = i * TexelsPerPrimitive;
                 var p = primitives[i];
                 pixels[baseIdx + 0] = new Color(p.Position.x, p.Position.y, p.Size.x, p.Size.y);
-                pixels[baseIdx + 1] = new Color(p.Color.r, p.Color.g, p.Color.b, p.Color.a);
+                pixels[baseIdx + 1] = EncodeColorForDataTexture(p.Color);
                 var rotNorm = ((p.RotationDegrees % 360f) + 360f) % 360f / 360f;
                 pixels[baseIdx + 2] = new Color((float)p.Type, p.Softness, rotNorm, p.Layer / 255f);
                 pixels[baseIdx + 3] = new Color(Math.Max(p.ParameterIndex, 0), Math.Max(p.ParameterCount, 0), p.StrokeRadius, Math.Max(p.GradientIndex, 0));
@@ -131,6 +133,23 @@ namespace SDFX.VectorTextureCompiler.Core.Baking
                 anisoLevel = 0,
                 name = "SDFX_DataTexture"
             };
+        }
+
+        /// <summary>
+        /// Data textures are created with <c>linear: true</c> (no sRGB sampler decode).
+        /// SVG / VectorGraphics colors are authored in sRGB, so convert RGB to linear when
+        /// the project uses Linear color space.
+        /// </summary>
+        public static Color EncodeColorForDataTexture(Color srgb)
+        {
+            if (QualitySettings.activeColorSpace != ColorSpace.Linear)
+            {
+                return srgb;
+            }
+
+            var linear = srgb.linear;
+            linear.a = srgb.a;
+            return linear;
         }
     }
 }

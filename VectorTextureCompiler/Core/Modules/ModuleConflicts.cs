@@ -8,7 +8,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
     {
         public static readonly string[] DiffuseLighting =
         {
-            "shading", "toon", "cel", "lightmodes", "shadow", "pbr"
+            "shading", "toon", "cel", "flat", "lightmodes", "shadow", "pbr"
         };
 
         public static IReadOnlyList<string> DiffuseLightingExcept(string selfId)

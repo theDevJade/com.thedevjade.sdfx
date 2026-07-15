@@ -103,10 +103,16 @@ namespace SDFX.VectorTextureCompiler.Tests.Modules
             ShaderModuleRegistry.ResetBuiltIns();
 
             Assert.IsNotNull(ShaderModuleRegistry.Find("toon"));
+            Assert.IsNotNull(ShaderModuleRegistry.Find("flat"));
+            Assert.IsNotNull(ShaderModuleRegistry.Find("overlay"));
+            Assert.AreEqual(4, ShaderModuleRegistry.Find("overlay").ExtraSamplerCount);
             Assert.IsNotNull(ShaderModuleRegistry.FindPreset("avatar"));
             var avatarIds = ShaderModuleRegistry.ResolvePreset("avatar");
             Assert.IsNotNull(avatarIds);
             CollectionAssert.Contains(avatarIds, "toon");
+            var decalIds = ShaderModuleRegistry.ResolvePreset("decal");
+            Assert.IsNotNull(decalIds);
+            CollectionAssert.Contains(decalIds, "overlay");
             Assert.Greater(ShaderModuleRegistry.All.Count, 10);
         }
 
@@ -117,6 +123,17 @@ namespace SDFX.VectorTextureCompiler.Tests.Modules
             var warnings = ShaderModuleRegistry.ValidateSelection(new[] { "toon", "pbr" });
             Assert.Greater(warnings.Count, 0);
             StringAssert.Contains("conflicts", warnings[0]);
+        }
+
+        [Test]
+        public void Registry_ValidateSelection_AllDiffuseModels_ProducesManyPairs()
+        {
+            ShaderModuleRegistry.ResetBuiltIns();
+            var warnings = ShaderModuleRegistry.ValidateSelection(new[]
+            {
+                "shading", "toon", "cel", "flat", "lightmodes", "shadow", "pbr"
+            });
+            Assert.Greater(warnings.Count, 4);
         }
 
         [Test]

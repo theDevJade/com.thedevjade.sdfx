@@ -67,8 +67,19 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
             Directory.CreateDirectory(outputFolder);
             var fileName = request.ShaderName.Replace("/", "_") + ".shader";
             var fullPath = Path.Combine(outputFolder, fileName);
-            File.WriteAllText(fullPath, GenerateShaderSource(request));
+            var source = NormalizeNewlines(GenerateShaderSource(request));
+            File.WriteAllText(fullPath, source, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             return fullPath;
+        }
+
+        private static string NormalizeNewlines(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            return text.Replace("\r\n", "\n").Replace("\r", "\n");
         }
 
         public static string GenerateShaderSource(string shaderName, int maxPrimitivesPerCell, bool hasTransparency)
@@ -150,6 +161,7 @@ _QueueOffset (""Render Queue Offset"", Float) = 0
 _Brightness (""Brightness"", Range(-1, 1)) = 0
 _Contrast (""Contrast"", Range(0, 3)) = 1
 _Saturation (""Saturation"", Range(0, 3)) = 1
+_ColorBoost (""Color Boost"", Range(0, 2)) = 0
 _Exposure (""Exposure"", Range(0, 4)) = 1
 _Opacity (""Opacity"", Range(0, 1)) = 1
 _StencilRef (""Stencil Ref"", Float) = 0
@@ -351,6 +363,7 @@ float _VertexColorMode;
 float _Brightness;
 float _Contrast;
 float _Saturation;
+float _ColorBoost;
 float _Exposure;
 float _Opacity;
 float _StencilRef;
@@ -468,9 +481,11 @@ sampler2D _SdfxGrabTex;
 float sdfDist;
 fixed4 art = SdfxEvaluate(uv, sdfDist);
 
+// art.rgb is coverage-composited (premultiplied over 0). Composite over background, then unpremultiply for SrcAlpha blending.
 fixed4 col;
 col.a   = art.a + _BackgroundColor.a * (1.0 - art.a);
-col.rgb = (art.rgb * art.a + _BackgroundColor.rgb * _BackgroundColor.a * (1.0 - art.a)) / max(col.a, 1e-4);
+col.rgb = art.rgb + _BackgroundColor.rgb * _BackgroundColor.a * (1.0 - art.a);
+col.rgb /= max(col.a, 1e-4);
 col *= _Color;
 col.a *= _Opacity;
 half3 baseRgb = col.rgb;
@@ -538,7 +553,7 @@ col.rgb = SdfxApplyBaseColorGrading(col.rgb, i.vertexColor, _UseVertexColor, _Ve
                 return;
             }
 
-            var lines = block.Replace("\r\n", "\n").Trim('\n').Split('\n');
+            var lines = block.Replace("\r\n", "\n").Replace("\r", "\n").Trim('\n').Split('\n');
             foreach (var line in lines)
             {
                 if (string.IsNullOrWhiteSpace(line))

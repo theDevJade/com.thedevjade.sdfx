@@ -5,6 +5,7 @@ using SDFX.VectorTextureCompiler.Core.Modules;
 using SDFX.VectorTextureCompiler.Core.Presets;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace SDFX.VectorTextureCompiler.Editor
 {
@@ -36,12 +37,6 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             editor?.RegisterPropertyChangeUndo(preset.DisplayName);
 
-            var compiledIds = new HashSet<string>(
-                ShaderModuleRegistry.All
-                    .Where(m => material.HasProperty(m.ToggleProperty))
-                    .Select(m => m.Id),
-                System.StringComparer.OrdinalIgnoreCase);
-
             foreach (var module in ShaderModuleRegistry.All)
             {
                 if (!material.HasProperty(module.ToggleProperty))
@@ -66,27 +61,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             {
                 foreach (var prop in preset.Properties)
                 {
-                    if (string.IsNullOrWhiteSpace(prop.Name) || !material.HasProperty(prop.Name))
-                    {
-                        continue;
-                    }
-
-                    switch (prop.Type)
-                    {
-                        case MaterialPresetPropertyType.Float:
-                            material.SetFloat(prop.Name, prop.FloatValue);
-                            break;
-                        case MaterialPresetPropertyType.Color:
-                            material.SetColor(prop.Name, prop.ColorValue);
-                            break;
-                        case MaterialPresetPropertyType.Texture:
-                            if (prop.TextureValue != null)
-                            {
-                                material.SetTexture(prop.Name, prop.TextureValue);
-                            }
-
-                            break;
-                    }
+                    TryApplyProperty(material, prop);
                 }
             }
 
@@ -120,50 +95,150 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 foreach (var moduleProp in module.Properties)
                 {
-                    if (!material.HasProperty(moduleProp.Name))
+                    if (TryCaptureProperty(material, moduleProp.Name, moduleProp.Kind, out var entry))
                     {
-                        continue;
+                        props.Add(entry);
                     }
-
-                    var entry = new MaterialPresetProperty { Name = moduleProp.Name };
-                    switch (moduleProp.Kind)
-                    {
-                        case ModulePropertyKind.Color:
-                            entry.Type = MaterialPresetPropertyType.Color;
-                            entry.ColorValue = material.GetColor(moduleProp.Name);
-                            break;
-                        case ModulePropertyKind.Texture2D:
-                            entry.Type = MaterialPresetPropertyType.Texture;
-                            entry.TextureValue = material.GetTexture(moduleProp.Name);
-                            break;
-                        default:
-                            entry.Type = MaterialPresetPropertyType.Float;
-                            entry.FloatValue = material.GetFloat(moduleProp.Name);
-                            break;
-                    }
-
-                    props.Add(entry);
                 }
             }
 
-            foreach (var core in new[] { "_Brightness", "_Contrast", "_Saturation", "_Exposure", "_Opacity", "_PbrMode", "_ToonSteps" })
+            foreach (var core in new[] { "_Brightness", "_Contrast", "_Saturation", "_ColorBoost", "_Exposure", "_Opacity", "_PbrMode", "_ToonSteps" })
             {
-                if (!material.HasProperty(core))
+                if (TryCaptureProperty(material, core, ModulePropertyKind.Float, out var entry))
                 {
-                    continue;
+                    props.Add(entry);
                 }
-
-                props.Add(new MaterialPresetProperty
-                {
-                    Name = core,
-                    Type = MaterialPresetPropertyType.Float,
-                    FloatValue = material.GetFloat(core)
-                });
             }
 
             preset.EnabledModuleIds = enabled.ToArray();
             preset.Properties = props.ToArray();
             return preset;
+        }
+
+        private static bool TryApplyProperty(Material material, MaterialPresetProperty prop)
+        {
+            if (prop == null || string.IsNullOrWhiteSpace(prop.Name) || !material.HasProperty(prop.Name))
+            {
+                return false;
+            }
+
+            if (!TryGetShaderPropertyType(material, prop.Name, out var shaderType))
+            {
+                return false;
+            }
+
+            switch (prop.Type)
+            {
+                case MaterialPresetPropertyType.Color:
+                    if (shaderType != ShaderPropertyType.Color)
+                    {
+                        return false;
+                    }
+
+                    material.SetColor(prop.Name, prop.ColorValue);
+                    return true;
+
+                case MaterialPresetPropertyType.Texture:
+                    if (shaderType != ShaderPropertyType.Texture || prop.TextureValue == null)
+                    {
+                        return false;
+                    }
+
+                    material.SetTexture(prop.Name, prop.TextureValue);
+                    return true;
+
+                case MaterialPresetPropertyType.Vector:
+                    if (shaderType != ShaderPropertyType.Vector)
+                    {
+                        return false;
+                    }
+
+                    material.SetVector(prop.Name, prop.VectorValue);
+                    return true;
+
+                case MaterialPresetPropertyType.Float:
+                    if (shaderType != ShaderPropertyType.Float && shaderType != ShaderPropertyType.Range)
+                    {
+                        return false;
+                    }
+
+                    material.SetFloat(prop.Name, prop.FloatValue);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryCaptureProperty(
+            Material material,
+            string name,
+            ModulePropertyKind preferredKind,
+            out MaterialPresetProperty entry)
+        {
+            entry = null;
+            if (string.IsNullOrWhiteSpace(name) || !material.HasProperty(name))
+            {
+                return false;
+            }
+
+            if (!TryGetShaderPropertyType(material, name, out var shaderType))
+            {
+                return false;
+            }
+
+            entry = new MaterialPresetProperty { Name = name };
+
+            switch (shaderType)
+            {
+                case ShaderPropertyType.Color:
+                    entry.Type = MaterialPresetPropertyType.Color;
+                    entry.ColorValue = material.GetColor(name);
+                    return true;
+
+                case ShaderPropertyType.Texture:
+                    entry.Type = MaterialPresetPropertyType.Texture;
+                    entry.TextureValue = material.GetTexture(name);
+                    return true;
+
+                case ShaderPropertyType.Vector:
+                    entry.Type = MaterialPresetPropertyType.Vector;
+                    entry.VectorValue = material.GetVector(name);
+                    return true;
+
+                case ShaderPropertyType.Float:
+                case ShaderPropertyType.Range:
+                    if (preferredKind == ModulePropertyKind.Vector)
+                    {
+                        return false;
+                    }
+
+                    entry.Type = MaterialPresetPropertyType.Float;
+                    entry.FloatValue = material.GetFloat(name);
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryGetShaderPropertyType(Material material, string name, out ShaderPropertyType type)
+        {
+            type = default;
+            var shader = material.shader;
+            if (shader == null)
+            {
+                return false;
+            }
+
+            var index = shader.FindPropertyIndex(name);
+            if (index < 0)
+            {
+                return false;
+            }
+
+            type = shader.GetPropertyType(index);
+            return true;
         }
     }
 }

@@ -5,6 +5,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
         public const int Uv = 10;
         public const int UvDistort = 20;
         public const int Animation = 50;
+        public const int Overlay = 90;
         public const int Lighting = 100;
         public const int Shadow = 115;
         public const int Pbr = 130;

@@ -1,4 +1,5 @@
 using System.IO;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEditor;
 using UnityEngine;
 
@@ -6,13 +7,16 @@ namespace SDFX.Rasterizer.Editor
 {
     public static class RasterToSvgMenu
     {
-        [MenuItem("Assets/SDFX/Auto Convert To SVG", false, 1999)]
+        [MenuItem(SdfxLanguage.Menu.AutoConvertToSvg, false, 1999)]
         private static void AutoConvertSelected()
         {
             var textures = Selection.GetFiltered<Texture2D>(SelectionMode.Assets);
             if (textures == null || textures.Length == 0)
             {
-                EditorUtility.DisplayDialog("SDFX Rasterizer", "Select one or more Texture2D assets first.", "OK");
+                EditorUtility.DisplayDialog(
+                    SdfxLanguage.Rasterizer.WindowTitle,
+                    SdfxLanguage.Rasterizer.SelectTexturesFirst,
+                    SdfxLanguage.Rasterizer.OkButton);
                 return;
             }
 
@@ -31,15 +35,19 @@ namespace SDFX.Rasterizer.Editor
                     }
 
                     EditorUtility.DisplayProgressBar(
-                        "SDFX Rasterizer",
-                        $"Analyzing {texture.name} ({i + 1}/{textures.Length})…",
+                        SdfxLanguage.Rasterizer.WindowTitle,
+                        SdfxLanguage.Rasterizer.ProgressAnalyzing(texture.name, i + 1, textures.Length),
                         i / (float)textures.Length);
 
                     var recommendation = RasterAutoAlgorithmSelector.Analyze(texture);
 
                     EditorUtility.DisplayProgressBar(
-                        "SDFX Rasterizer",
-                        $"Converting {texture.name} with {RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name} ({i + 1}/{textures.Length})…",
+                        SdfxLanguage.Rasterizer.WindowTitle,
+                        SdfxLanguage.Rasterizer.ProgressConverting(
+                            texture.name,
+                            RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
+                            i + 1,
+                            textures.Length),
                         (i + 0.5f) / textures.Length);
 
                     var svgPath = Path.ChangeExtension(assetPath, ".svg");
@@ -51,18 +59,22 @@ namespace SDFX.Rasterizer.Editor
                         converted++;
                         lastSvg = AssetDatabase.LoadAssetAtPath<Object>(svgPath);
                         Debug.Log(
-                            $"SDFX Rasterizer auto-converted '{assetPath}' → '{svgPath}' " +
-                            $"({result.PathCount} paths) using {RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name}.\n" +
-                            $"Why: {recommendation.Reason}",
+                            SdfxLanguage.Rasterizer.AutoConvertSuccessLog(
+                                assetPath,
+                                svgPath,
+                                result.PathCount,
+                                RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
+                                recommendation.Reason),
                             lastSvg);
                     }
                     else
                     {
                         failed++;
                         Debug.LogError(
-                            $"SDFX Rasterizer failed to auto-convert '{assetPath}' " +
-                            $"using {RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name}. " +
-                            $"Why chosen: {recommendation.Reason}",
+                            SdfxLanguage.Rasterizer.AutoConvertFailedLog(
+                                assetPath,
+                                RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
+                                recommendation.Reason),
                             texture);
                     }
                 }
@@ -81,17 +93,17 @@ namespace SDFX.Rasterizer.Editor
             if (failed > 0)
             {
                 EditorUtility.DisplayDialog(
-                    "SDFX Rasterizer",
-                    $"Converted {converted} texture(s), {failed} failed. Check the Console for details.",
-                    "OK");
+                    SdfxLanguage.Rasterizer.WindowTitle,
+                    SdfxLanguage.Rasterizer.BatchResultSummary(converted, failed),
+                    SdfxLanguage.Rasterizer.OkButton);
             }
         }
 
-        [MenuItem("Assets/SDFX/Auto Convert To SVG", true)]
+        [MenuItem(SdfxLanguage.Menu.AutoConvertToSvg, true)]
         private static bool AutoConvertSelectedValidate() =>
             Selection.GetFiltered<Texture2D>(SelectionMode.Assets).Length > 0;
 
-        [MenuItem("Assets/SDFX/Open Rasterizer", false, 2000)]
+        [MenuItem(SdfxLanguage.Menu.OpenRasterizerFromAssets, false, 2000)]
         private static void OpenRasterizer() => RasterizerWindow.Open();
     }
 }

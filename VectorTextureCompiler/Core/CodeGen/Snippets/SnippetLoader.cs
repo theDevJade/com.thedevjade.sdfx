@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEngine;
 
 namespace SDFX.VectorTextureCompiler.Core.CodeGen.Snippets
@@ -33,7 +34,7 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen.Snippets
 
             if (!File.Exists(fullPath))
             {
-                throw new FileNotFoundException($"SDFX snippet not found: {fullPath}", fullPath);
+                throw new FileNotFoundException(SdfxLanguage.Compiler.SnippetNotFound(fullPath), fullPath);
             }
 
             var writeTicks = File.GetLastWriteTimeUtc(fullPath).Ticks;

@@ -1,7 +1,9 @@
 {
   "name": "SDFX.Rasterizer.Editor",
   "rootNamespace": "SDFX.Rasterizer",
-  "references": [],
+  "references": [
+    "SDFX.VectorTextureCompiler.Editor"
+  ],
   "includePlatforms": [
     "Editor"
   ],

@@ -1,20 +1,25 @@
 using System.Collections.Generic;
+using SDFX.VectorTextureCompiler.Core.Localization;
 
 namespace SDFX.VectorTextureCompiler.Core.Modules.BuiltIn.VrChat
 {
     public sealed class MirrorOptimizationModule : ShaderModule
     {
         public override string Id => "mirror";
-        public override string DisplayName => "Mirror Optimization";
-        public override string Description => "Reduces mirror rendering cost when viewed in VRChat mirrors.";
+        public override string DisplayName => SdfxLanguage.Modules.DisplayName(Id, "Mirror Optimization");
+        public override string Description => SdfxLanguage.Modules.Description(
+            Id,
+            "Reduces mirror rendering cost when viewed in VRChat mirrors.");
         public override ModuleCategory Category => ModuleCategory.VrChat;
         public override int Order => 520;
 
-        private static readonly ModuleProperty[] Props =
+        public override IReadOnlyList<ModuleProperty> Properties => new[]
         {
-            ModuleProperty.Range("_MirrorCostScale", "Mirror Cost Scale", 0f, 1f, 0.5f)
+            ModuleProperty.Range(
+                "_MirrorCostScale",
+                SdfxLanguage.Modules.Prop(Id, "_MirrorCostScale", "Mirror Cost Scale"),
+                0f, 1f, 0.5f)
         };
-        public override IReadOnlyList<ModuleProperty> Properties => Props;
 
         public override string EmitFragmentHook() => LoadModuleSnippet("Fragment");
     }

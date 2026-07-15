@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEngine;
 
 namespace SDFX.Rasterizer
@@ -25,13 +26,13 @@ namespace SDFX.Rasterizer
         {
             if (source == null)
             {
-                return Fallback("No source texture; using the general-purpose default.");
+                return Fallback(SdfxLanguage.Rasterizer.AutoReasonNoSourceTexture);
             }
 
             var image = RasterImageIO.Load(source);
             if (image == null)
             {
-                return Fallback("Texture pixels could not be read; using the general-purpose default.");
+                return Fallback(SdfxLanguage.Rasterizer.AutoReasonPixelsUnreadable);
             }
 
             try
@@ -61,8 +62,9 @@ namespace SDFX.Rasterizer
                 return new RasterAlgorithmRecommendation(
                     options.Algorithm,
                     options,
-                    $"Alpha silhouette: {stats.TransparentFraction:P0} transparent and one color covers " +
-                    $"{stats.OpaqueDominantColorCoverage:P0} of opaque pixels → Suzuki–Abe alpha contours.");
+                    SdfxLanguage.Rasterizer.AutoReasonAlphaSilhouette(
+                        stats.TransparentFraction,
+                        stats.OpaqueDominantColorCoverage));
             }
 
             if (stats.BinaryLumaFraction > 0.94f && stats.MeanSaturation < 0.08f && stats.SoftAlphaFraction < 0.1f)
@@ -72,8 +74,7 @@ namespace SDFX.Rasterizer
                 return new RasterAlgorithmRecommendation(
                     options.Algorithm,
                     options,
-                    $"Black & white art: {stats.BinaryLumaFraction:P0} of pixels near luma extremes, " +
-                    $"mean saturation {stats.MeanSaturation:F2} → Potrace binary tracing.");
+                    SdfxLanguage.Rasterizer.AutoReasonBlackWhiteArt(stats.BinaryLumaFraction, stats.MeanSaturation));
             }
 
             if (stats.DominantColorCount <= 16 && stats.DominantColorCoverage > 0.97f && stats.SoftEdgeFraction < 0.05f)
@@ -85,8 +86,10 @@ namespace SDFX.Rasterizer
                 return new RasterAlgorithmRecommendation(
                     options.Algorithm,
                     options,
-                    $"Flat pixel art: {stats.DominantColorCount} colors cover {stats.DominantColorCoverage:P0} " +
-                    $"with hard edges → Color Quant + Marching Squares ({options.ColorQuant.ColorCount} colors).");
+                    SdfxLanguage.Rasterizer.AutoReasonFlatPixelArt(
+                        stats.DominantColorCount,
+                        stats.DominantColorCoverage,
+                        options.ColorQuant.ColorCount));
             }
 
             options.Algorithm = RasterVectorizationAlgorithm.HybridSegmentContourBezierSdf;
@@ -95,13 +98,14 @@ namespace SDFX.Rasterizer
             options.Hybrid.MinRegionArea = minRegionArea;
             options.Hybrid.UseBezierFit = stats.SoftEdgeFraction > 0.25f;
 
-            var kind = stats.DominantColorCount > 48 ? "continuous-tone" : "flat-color";
             return new RasterAlgorithmRecommendation(
                 options.Algorithm,
                 options,
-                $"General {kind} image: ~{stats.DominantColorCount} dominant colors, " +
-                $"{stats.SoftEdgeFraction:P0} soft edges → Hybrid Contour " +
-                $"({options.ColorQuant.ColorCount} colors, bezier {(options.Hybrid.UseBezierFit ? "on" : "off")}).");
+                SdfxLanguage.Rasterizer.AutoReasonGeneralImage(
+                    stats.DominantColorCount,
+                    stats.SoftEdgeFraction,
+                    options.ColorQuant.ColorCount,
+                    options.Hybrid.UseBezierFit));
         }
 
         private static RasterAlgorithmRecommendation Fallback(string reason)

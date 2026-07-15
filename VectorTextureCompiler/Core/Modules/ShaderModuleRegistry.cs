@@ -29,47 +29,47 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
 
         private static readonly ModulePreset[] Presets =
         {
-            new ModulePreset("avatar", "Avatar", new[]
+            new ModulePreset("avatar", SdfxLanguage.Modules.Preset("avatar", "Avatar"), new[]
             {
                 "uv", "shading", "toon", "rim", "outline", "glow", "emission", "audioreact", "vertex"
             }, OptimizationProfile.Pc, moduleLodTier: 1),
-            new ModulePreset("world", "World", new[]
+            new ModulePreset("world", SdfxLanguage.Modules.Preset("world", "World"), new[]
             {
                 "uv", "shading", "world", "ambient", "reflection", "surface"
             }, OptimizationProfile.Pc, moduleLodTier: 1),
-            new ModulePreset("ui", "UI", new[]
+            new ModulePreset("ui", SdfxLanguage.Modules.Preset("ui", "UI"), new[]
             {
                 "uv", "stylized", "transparency", "glow", "outline"
             }, OptimizationProfile.Pc, blendMode: BlendModePreset.Transparent, transparencyMode: TransparencyMode.ForceTransparent),
-            new ModulePreset("quest", "Quest", new[]
+            new ModulePreset("quest", SdfxLanguage.Modules.Preset("quest", "Quest"), new[]
             {
                 "uv", "shading", "toon", "rim", "outline", "glow", "dissolve"
             }, OptimizationProfile.Quest, moduleLodTier: 2, buildQuestVariant: true),
-            new ModulePreset("toon", "Toon Avatar", new[]
+            new ModulePreset("toon", SdfxLanguage.Modules.Preset("toon", "Toon Avatar"), new[]
             {
                 "uv", "toon", "cel", "shadow", "rim", "outline", "emission"
             }, OptimizationProfile.Pc, moduleLodTier: 1),
-            new ModulePreset("pbr", "PBR Prop", new[]
+            new ModulePreset("pbr", SdfxLanguage.Modules.Preset("pbr", "PBR Prop"), new[]
             {
                 "uv", "pbr", "normal", "detail", "reflection", "ambient", "shadow"
             }, OptimizationProfile.Pc, moduleLodTier: 1),
-            new ModulePreset("stylized", "Stylized / MatCap", new[]
+            new ModulePreset("stylized", SdfxLanguage.Modules.Preset("stylized", "Stylized / MatCap"), new[]
             {
                 "uv", "matcap", "stylized", "posterize", "glow", "transparency"
             }, OptimizationProfile.Pc, blendMode: BlendModePreset.Transparent),
-            new ModulePreset("vfx", "Dissolve / VFX", new[]
+            new ModulePreset("vfx", SdfxLanguage.Modules.Preset("vfx", "Dissolve / VFX"), new[]
             {
                 "uv", "dissolve", "procedural", "specfx", "emission", "glow"
             }, OptimizationProfile.Pc, moduleLodTier: 2),
-            new ModulePreset("decal", "Decal / Sticker", new[]
+            new ModulePreset("decal", SdfxLanguage.Modules.Preset("decal", "Decal / Sticker"), new[]
             {
-                "uv", "layers", "transparency", "outline"
+                "uv", "overlay", "layers", "transparency", "outline"
             }, OptimizationProfile.Pc, blendMode: BlendModePreset.Transparent, transparencyMode: TransparencyMode.ForceTransparent),
-            new ModulePreset("particle", "Particle", new[]
+            new ModulePreset("particle", SdfxLanguage.Modules.Preset("particle", "Particle"), new[]
             {
                 "uv", "particle", "transparency", "emission"
             }, OptimizationProfile.Pc, blendMode: BlendModePreset.Additive, transparencyMode: TransparencyMode.ForceTransparent),
-            new ModulePreset("all", "All Modules", null, moduleLodTier: 3)
+            new ModulePreset("all", SdfxLanguage.Modules.Preset("all", "All Modules"), null, moduleLodTier: 3)
         };
 
         static ShaderModuleRegistry()
@@ -133,14 +133,28 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
         public static int TotalExtraSamplerCount(IReadOnlyList<ShaderModule> modules)
             => modules == null ? 0 : modules.Sum(m => Math.Max(0, m.ExtraSamplerCount));
 
-        public static IReadOnlyList<string> ValidateSelection(IReadOnlyList<string> enabledIds)
+        public sealed class ModuleConflict
+        {
+            public ModuleConflict(string leftId, string rightId, string message)
+            {
+                LeftId = leftId;
+                RightId = rightId;
+                Message = message;
+            }
+
+            public string LeftId { get; }
+            public string RightId { get; }
+            public string Message { get; }
+        }
+
+        public static IReadOnlyList<ModuleConflict> FindConflicts(IReadOnlyList<string> enabledIds)
         {
             EnsureInitialized();
-            var warnings = new List<string>();
+            var conflicts = new List<ModuleConflict>();
             var seenPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             if (enabledIds == null)
             {
-                return warnings;
+                return conflicts;
             }
 
             var enabled = new HashSet<string>(enabledIds, StringComparer.OrdinalIgnoreCase);
@@ -152,28 +166,39 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
                     continue;
                 }
 
-                foreach (var conflict in module.ConflictIds)
+                foreach (var conflictId in module.ConflictIds)
                 {
-                    if (!enabled.Contains(conflict))
+                    if (!enabled.Contains(conflictId))
                     {
                         continue;
                     }
 
-                    var pairKey = string.Compare(id, conflict, StringComparison.OrdinalIgnoreCase) < 0
-                        ? id + "|" + conflict
-                        : conflict + "|" + id;
+                    var pairKey = string.Compare(id, conflictId, StringComparison.OrdinalIgnoreCase) < 0
+                        ? id + "|" + conflictId
+                        : conflictId + "|" + id;
                     if (!seenPairs.Add(pairKey))
                     {
                         continue;
                     }
 
-                    var other = Find(conflict);
-                    warnings.Add($"{module.DisplayName} conflicts with {other?.DisplayName ?? conflict}.");
+                    var leftId = string.Compare(id, conflictId, StringComparison.OrdinalIgnoreCase) < 0 ? id : conflictId;
+                    var rightId = string.Equals(leftId, id, StringComparison.OrdinalIgnoreCase) ? conflictId : id;
+                    var left = Find(leftId);
+                    var right = Find(rightId);
+                    conflicts.Add(new ModuleConflict(
+                        leftId,
+                        rightId,
+                        SdfxLanguage.Compiler.ModuleConflictsWith(
+                            left?.DisplayName ?? leftId,
+                            right?.DisplayName ?? rightId)));
                 }
             }
 
-            return warnings;
+            return conflicts;
         }
+
+        public static IReadOnlyList<string> ValidateSelection(IReadOnlyList<string> enabledIds)
+            => FindConflicts(enabledIds).Select(c => c.Message).ToList();
 
         public static void Register(ShaderModule module)
         {
@@ -280,7 +305,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
             {
                 if (throwOnDuplicate)
                 {
-                    throw new InvalidOperationException($"A shader module with id '{module.Id}' is already registered.");
+                    throw new InvalidOperationException(SdfxLanguage.Compiler.ModuleAlreadyRegistered(module.Id));
                 }
 
                 return false;
@@ -308,6 +333,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
             RegisterCore(new UvDistortModule());
 
             RegisterCore(new LightingModesModule());
+            RegisterCore(new FlatLightingModule());
             RegisterCore(new ShadowModule());
             RegisterCore(new PbrModule());
             RegisterCore(new AmbientModule());
@@ -320,6 +346,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
             RegisterCore(new RefractionModule());
             RegisterCore(new DetailMapsModule());
             RegisterCore(new LayersModule());
+            RegisterCore(new OverlayImagesModule());
 
             RegisterCore(new StylizedModule());
             RegisterCore(new SurfaceWearModule());

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -56,7 +57,7 @@ namespace SDFX.Rasterizer
                 return false;
             }
 
-            reportProgress?.Invoke(0.01f, "Warming up raster compute shaders");
+            reportProgress?.Invoke(0.01f, SdfxLanguage.Rasterizer.ProgressWarmupShaders);
             RenderTexture sourceRt = null;
             RenderTexture edgeRt = null;
             RenderTexture maskRt = null;
@@ -134,7 +135,7 @@ namespace SDFX.Rasterizer
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"SDFX raster compute warmup failed: {ex.Message}");
+                Debug.LogWarning(SdfxLanguage.Rasterizer.ComputeWarmupFailed(ex.Message));
                 return false;
             }
             finally

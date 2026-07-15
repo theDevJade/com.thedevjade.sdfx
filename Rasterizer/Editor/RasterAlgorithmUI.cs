@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using SDFX.Rasterizer.Inference;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEditor;
 using UnityEngine;
 
@@ -15,7 +16,7 @@ namespace SDFX.Rasterizer.Editor
             EditorGUILayout.LabelField(info.Description, EditorStyles.wordWrappedMiniLabel);
             if (!string.IsNullOrWhiteSpace(info.BestFor))
             {
-                EditorGUILayout.LabelField($"Best for: {info.BestFor}", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField(SdfxLanguage.Rasterizer.BestForLabel(info.BestFor), EditorStyles.miniLabel);
             }
         }
 
@@ -45,7 +46,7 @@ namespace SDFX.Rasterizer.Editor
                     DrawBezierSettings(options.Bezier);
                     if (!SentisInferenceService.IsAvailable)
                     {
-                        EditorGUILayout.HelpBox("Unity Sentis is not available. Neural vectorization requires the Sentis package.", MessageType.Warning);
+                        EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.SentisUnavailableNeural, MessageType.Warning);
                     }
                     break;
                 case RasterVectorizationAlgorithm.SuperpixelSegmentation:
@@ -61,7 +62,7 @@ namespace SDFX.Rasterizer.Editor
                     DrawNeuralHybridSettings(options.NeuralHybrid);
                     if (!SentisInferenceService.IsAvailable)
                     {
-                        EditorGUILayout.HelpBox("Unity Sentis is not available. Hybrid neural vectorization requires the Sentis package.", MessageType.Warning);
+                        EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.SentisUnavailableHybrid, MessageType.Warning);
                     }
                     break;
                 case RasterVectorizationAlgorithm.HybridMultiResolutionLod:
@@ -72,84 +73,126 @@ namespace SDFX.Rasterizer.Editor
 
         private static void DrawColorQuantSettings(RasterColorQuantOptions options)
         {
-            options.ColorCount = EditorGUILayout.IntSlider("Color Count", options.ColorCount, 2, 64);
-            options.Method = (RasterColorQuantMethod)EditorGUILayout.EnumPopup("Quant Method", options.Method);
-            options.SimplifyTolerance = EditorGUILayout.Slider("Simplify Tolerance", options.SimplifyTolerance, 0.5f, 8f);
-            options.MinRegionArea = EditorGUILayout.IntField("Min Region Area", options.MinRegionArea);
+            options.ColorCount = EditorGUILayout.IntSlider(SdfxLanguage.Rasterizer.ColorCountField, options.ColorCount, 2, 64);
+            options.Method = (RasterColorQuantMethod)EditorGUILayout.EnumPopup(SdfxLanguage.Rasterizer.QuantMethodField, options.Method);
+            options.SimplifyTolerance = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.SimplifyToleranceField,
+                options.SimplifyTolerance,
+                0.5f,
+                8f);
+            options.MinRegionArea = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MinRegionAreaField, options.MinRegionArea);
         }
 
         private static void DrawContourSettings(RasterContourOptions options)
         {
-            options.ThresholdMode = (RasterThresholdMode)EditorGUILayout.EnumPopup("Threshold Mode", options.ThresholdMode);
-            options.TraceHoles = EditorGUILayout.Toggle("Trace Holes", options.TraceHoles);
-            options.SimplifyTolerance = EditorGUILayout.Slider("Simplify Tolerance", options.SimplifyTolerance, 0.5f, 8f);
+            options.ThresholdMode = (RasterThresholdMode)EditorGUILayout.EnumPopup(
+                SdfxLanguage.Rasterizer.ThresholdModeField,
+                options.ThresholdMode);
+            options.TraceHoles = EditorGUILayout.Toggle(SdfxLanguage.Rasterizer.TraceHolesField, options.TraceHoles);
+            options.SimplifyTolerance = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.SimplifyToleranceField,
+                options.SimplifyTolerance,
+                0.5f,
+                8f);
         }
 
         private static void DrawPotraceSettings(RasterPotraceOptions options)
         {
-            options.TurdSize = EditorGUILayout.IntField("Turd Size", options.TurdSize);
-            options.AlphaMax = EditorGUILayout.Slider("Alpha Max", options.AlphaMax, 0f, 2f);
-            options.OptTolerance = EditorGUILayout.Slider("Opt Tolerance", options.OptTolerance, 0.05f, 2f);
+            options.TurdSize = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.TurdSizeField, options.TurdSize);
+            options.AlphaMax = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.AlphaMaxField, options.AlphaMax, 0f, 2f);
+            options.OptTolerance = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.OptToleranceField, options.OptTolerance, 0.05f, 2f);
         }
 
         private static void DrawBezierSettings(RasterBezierOptions options)
         {
-            options.MaxError = EditorGUILayout.Slider("Bezier Max Error", options.MaxError, 0.5f, 8f);
-            options.CornerAngle = EditorGUILayout.Slider("Corner Angle", options.CornerAngle, 10f, 120f);
-            options.MinSegmentLength = EditorGUILayout.Slider("Min Segment Length", options.MinSegmentLength, 1f, 16f);
+            options.MaxError = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.BezierMaxErrorField, options.MaxError, 0.5f, 8f);
+            options.CornerAngle = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.CornerAngleField, options.CornerAngle, 10f, 120f);
+            options.MinSegmentLength = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.MinSegmentLengthField,
+                options.MinSegmentLength,
+                1f,
+                16f);
         }
 
         private static void DrawNeuralSettings(RasterNeuralOptions options)
         {
             if (SentisInferenceService.IsAvailable)
             {
-                EditorGUILayout.HelpBox("Assign a Sentis ModelAsset for neural vectorization.", MessageType.Info);
+                EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.AssignNeuralModelHelp, MessageType.Info);
             }
 
-            options.ModelAssetPath = DrawModelAssetField("Neural Model", options.ModelAssetPath);
-            options.ConfidenceThreshold = EditorGUILayout.Slider("Confidence Threshold", options.ConfidenceThreshold, 0f, 1f);
-            options.MaxCurves = EditorGUILayout.IntField("Max Curves", options.MaxCurves);
+            options.ModelAssetPath = DrawModelAssetField(SdfxLanguage.Rasterizer.NeuralModelField, options.ModelAssetPath);
+            options.ConfidenceThreshold = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.ConfidenceThresholdField,
+                options.ConfidenceThreshold,
+                0f,
+                1f);
+            options.MaxCurves = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MaxCurvesField, options.MaxCurves);
         }
 
         private static void DrawSuperpixelSettings(RasterSuperpixelOptions options)
         {
-            options.SuperpixelCount = EditorGUILayout.IntSlider("Superpixel Count", options.SuperpixelCount, 16, 2048);
-            options.Compactness = EditorGUILayout.Slider("Compactness", options.Compactness, 1f, 40f);
-            options.MergeThreshold = EditorGUILayout.Slider("Merge Threshold", options.MergeThreshold, 0.01f, 0.5f);
+            options.SuperpixelCount = EditorGUILayout.IntSlider(
+                SdfxLanguage.Rasterizer.SuperpixelCountField,
+                options.SuperpixelCount,
+                16,
+                2048);
+            options.Compactness = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.CompactnessField, options.Compactness, 1f, 40f);
+            options.MergeThreshold = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.MergeThresholdField,
+                options.MergeThreshold,
+                0.01f,
+                0.5f);
         }
 
         private static void DrawVoronoiSettings(RasterVoronoiOptions options)
         {
-            options.SampleDensity = EditorGUILayout.IntSlider("Sample Density", options.SampleDensity, 1, 16);
-            options.MaxCells = EditorGUILayout.IntField("Max Cells", options.MaxCells);
+            options.SampleDensity = EditorGUILayout.IntSlider(
+                SdfxLanguage.Rasterizer.SampleDensityField,
+                options.SampleDensity,
+                1,
+                16);
+            options.MaxCells = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MaxCellsField, options.MaxCells);
         }
 
         private static void DrawGradientSettings(RasterGradientOptions options)
         {
-            options.OutputMode = (RasterGradientOutputMode)EditorGUILayout.EnumPopup("Output Mode", options.OutputMode);
+            options.OutputMode = (RasterGradientOutputMode)EditorGUILayout.EnumPopup(
+                SdfxLanguage.Rasterizer.OutputModeField,
+                options.OutputMode);
         }
 
         private static void DrawHybridSettings(RasterHybridOptions options)
         {
-            options.SimplifyTolerance = EditorGUILayout.Slider("Simplify Tolerance", options.SimplifyTolerance, 0.5f, 8f);
-            options.MinRegionArea = EditorGUILayout.IntField("Min Region Area", options.MinRegionArea);
+            options.SimplifyTolerance = EditorGUILayout.Slider(
+                SdfxLanguage.Rasterizer.SimplifyToleranceField,
+                options.SimplifyTolerance,
+                0.5f,
+                8f);
+            options.MinRegionArea = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MinRegionAreaField, options.MinRegionArea);
         }
 
         private static void DrawNeuralHybridSettings(RasterNeuralHybridOptions options)
         {
             if (SentisInferenceService.IsAvailable)
             {
-                EditorGUILayout.HelpBox("Assign a Sentis segmentation ModelAsset.", MessageType.Info);
+                EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.AssignSegmentationModelHelp, MessageType.Info);
             }
 
-            options.SegmentationModelPath = DrawModelAssetField("Segmentation Model", options.SegmentationModelPath);
-            options.PerRegionAlgorithm = (RasterPerRegionAlgorithm)EditorGUILayout.EnumPopup("Per-Region Algorithm", options.PerRegionAlgorithm);
-            options.MinRegionArea = EditorGUILayout.IntField("Min Region Area", options.MinRegionArea);
+            options.SegmentationModelPath = DrawModelAssetField(
+                SdfxLanguage.Rasterizer.SegmentationModelField,
+                options.SegmentationModelPath);
+            options.PerRegionAlgorithm = (RasterPerRegionAlgorithm)EditorGUILayout.EnumPopup(
+                SdfxLanguage.Rasterizer.PerRegionAlgorithmField,
+                options.PerRegionAlgorithm);
+            options.MinRegionArea = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MinRegionAreaField, options.MinRegionArea);
         }
 
         private static void DrawLodSettings(RasterLodOptions options)
         {
-            options.BaseAlgorithm = (RasterVectorizationAlgorithm)EditorGUILayout.EnumPopup("Base Algorithm", options.BaseAlgorithm);
+            options.BaseAlgorithm = (RasterVectorizationAlgorithm)EditorGUILayout.EnumPopup(
+                SdfxLanguage.Rasterizer.BaseAlgorithmField,
+                options.BaseAlgorithm);
         }
 
         private static string DrawModelAssetField(string label, string path)
@@ -198,7 +241,7 @@ namespace SDFX.Rasterizer.Editor
             {
                 if (!string.IsNullOrWhiteSpace(path))
                 {
-                    EditorGUILayout.HelpBox("Model asset path is set but the asset could not be loaded. Reassign a Sentis ModelAsset.", MessageType.Warning);
+                    EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.ModelLoadFailedWarning, MessageType.Warning);
                 }
 
                 return string.Empty;

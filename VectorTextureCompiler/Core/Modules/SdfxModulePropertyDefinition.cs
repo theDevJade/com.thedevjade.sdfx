@@ -1,4 +1,5 @@
 using System;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEngine;
 
 namespace SDFX.VectorTextureCompiler.Core.Modules
@@ -24,7 +25,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
         {
             if (string.IsNullOrWhiteSpace(Name))
             {
-                throw new InvalidOperationException("Module property Name is required.");
+                throw new InvalidOperationException(SdfxLanguage.Compiler.ModulePropertyNameRequired);
             }
 
             var display = string.IsNullOrWhiteSpace(DisplayName) ? Name : DisplayName;

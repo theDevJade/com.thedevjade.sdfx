@@ -10,8 +10,6 @@ namespace SDFX.VectorTextureCompiler.Editor
 {
     internal static class SdfxModulePropertyDrawer
     {
-        private const int ModeToolbarMax = 8;
-
         private static readonly Dictionary<string, ModuleProperty> CorePropertyMeta = BuildCorePropertyMeta();
 
         public static bool TryGetCoreMeta(string propertyName, out ModuleProperty meta)
@@ -102,24 +100,15 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
 
             var current = Mathf.Clamp(Mathf.RoundToInt(matProp.floatValue), 0, labels.Length - 1);
-            var isMode = meta.Name.EndsWith("Mode") || string.Equals(meta.DisplayName, "Mode", System.StringComparison.OrdinalIgnoreCase);
 
-            EditorGUILayout.LabelField(meta.DisplayName, EditorStyles.boldLabel);
             EditorGUI.showMixedValue = matProp.hasMixedValue;
             EditorGUI.BeginChangeCheck();
 
-            int newIndex;
-            if (labels.Length <= ModeToolbarMax)
-            {
-                newIndex = GUILayout.Toolbar(current, displayLabels, GUILayout.Height(20f));
-            }
-            else
-            {
-                newIndex = EditorGUILayout.Popup(
-                    new GUIContent(isMode ? "Selected" : meta.DisplayName, SdfxLanguage.ShaderGui.ModePopupTooltip),
-                    current,
-                    displayLabels);
-            }
+            // Always use a dropdown. Toolbars get cramped for blend/mode enums with many options.
+            var newIndex = EditorGUILayout.Popup(
+                new GUIContent(meta.DisplayName, SdfxLanguage.ShaderGui.ModePopupTooltip),
+                current,
+                displayLabels);
 
             if (EditorGUI.EndChangeCheck())
             {
@@ -130,7 +119,7 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             EditorGUI.showMixedValue = false;
             DrawEnumDescription(meta, current, displayLabels);
-            EditorGUILayout.Space(4f);
+            EditorGUILayout.Space(2f);
         }
 
         private static void DrawEnumDescription(ModuleProperty meta, int index, string[] displayLabels)

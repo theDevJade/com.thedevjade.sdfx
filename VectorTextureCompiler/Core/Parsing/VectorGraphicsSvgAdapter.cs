@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using SDFX.VectorTextureCompiler.Core.Baking;
 using SDFX.VectorTextureCompiler.Core.Localization;
 using SDFX.VectorTextureCompiler.Core.Primitives;
 using Unity.VectorGraphics;
@@ -450,7 +451,7 @@ namespace SDFX.VectorTextureCompiler.Core.Parsing
             for (var i = 0; i < GradientRampSize; i++)
             {
                 var t = i / (float)(GradientRampSize - 1);
-                var color = EvaluateStops(stops, t);
+                var color = DataTextureBaker.EncodeColorForDataTexture(EvaluateStops(stops, t));
                 pathEdges.Add(new Vector4(color.r, color.g, color.b, color.a));
             }
 

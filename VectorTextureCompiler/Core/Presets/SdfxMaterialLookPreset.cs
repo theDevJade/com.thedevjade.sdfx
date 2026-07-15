@@ -8,7 +8,8 @@ namespace SDFX.VectorTextureCompiler.Core.Presets
     {
         Float = 0,
         Color = 1,
-        Texture = 2
+        Texture = 2,
+        Vector = 3
     }
 
     [Serializable]
@@ -18,6 +19,7 @@ namespace SDFX.VectorTextureCompiler.Core.Presets
         public MaterialPresetPropertyType Type;
         public float FloatValue;
         public Color ColorValue = Color.white;
+        public Vector4 VectorValue;
         public Texture TextureValue;
     }
 

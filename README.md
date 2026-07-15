@@ -38,7 +38,7 @@ There are really two tools living in one package:
 - **Vector Texture Compiler** is the main product. It parses your source, optimizes and packs the resulting primitives, bakes them into data textures, and generates a modular BIRP shader to read them back at render time.
 - **Rasterizer** is the on-ramp for people who don't already have vector art. It turns a raster texture into an SVG using whichever of several algorithms fits best, so you can feed that SVG straight into the compiler.
 
-Both have their own window under **Tools / SDFX**.
+Both have their own window under **SDFX** in the Unity menu bar.
 
 ## The Shader Module System
 Instead of writing a new shader for every possible combination of features, SDFX uses a modular plugin system. Each feature is a compile-time module that gets injected into the final shader only when you enable it.

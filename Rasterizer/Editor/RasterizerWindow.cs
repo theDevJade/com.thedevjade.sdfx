@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEditor;
 using UnityEngine;
 
@@ -27,11 +28,11 @@ namespace SDFX.Rasterizer.Editor
             Hybrid = { SimplifyTolerance = 0.5f, MinRegionArea = 12 }
         };
 
-        [MenuItem("Tools/SDFX/Rasterizer", false, 100)]
+        [MenuItem(SdfxLanguage.Menu.OpenRasterizer, false, 100)]
         public static void Open()
         {
             var window = GetWindow<RasterizerWindow>();
-            window.titleContent = new GUIContent("SDFX Rasterizer");
+            window.titleContent = new GUIContent(SdfxLanguage.Rasterizer.WindowTitle);
             window.minSize = new Vector2(420f, 480f);
         }
 
@@ -58,16 +59,18 @@ namespace SDFX.Rasterizer.Editor
 
         private void DrawContents()
         {
-            EditorGUILayout.HelpBox(
-                "Convert a raster texture to SVG, then compile it in Tools → SDFX → Vector Texture Compiler.",
-                MessageType.Info);
+            EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.HelpBox, MessageType.Info);
 
-            sourceTexture = (Texture2D)EditorGUILayout.ObjectField("Source Texture", sourceTexture, typeof(Texture2D), false);
+            sourceTexture = (Texture2D)EditorGUILayout.ObjectField(
+                SdfxLanguage.Rasterizer.SourceTextureField,
+                sourceTexture,
+                typeof(Texture2D),
+                false);
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                outputDirectory = EditorGUILayout.TextField("Output Folder", outputDirectory);
-                if (GUILayout.Button("Browse", GUILayout.Width(80f)))
+                outputDirectory = EditorGUILayout.TextField(SdfxLanguage.Rasterizer.OutputFolderField, outputDirectory);
+                if (GUILayout.Button(SdfxLanguage.Rasterizer.BrowseButton, GUILayout.Width(80f)))
                 {
                     BrowseOutputFolder();
                 }
@@ -79,23 +82,29 @@ namespace SDFX.Rasterizer.Editor
                 if (!string.IsNullOrEmpty(assetPath))
                 {
                     EditorGUILayout.LabelField(
-                        $"Default: same folder as source ({Path.GetDirectoryName(assetPath)?.Replace('\\', '/')})",
+                        SdfxLanguage.Rasterizer.DefaultOutputFolder(Path.GetDirectoryName(assetPath)?.Replace('\\', '/')),
                         EditorStyles.miniLabel);
                 }
             }
 
-            writeFlatPreview = EditorGUILayout.Toggle("Write Flat Preview PNG", writeFlatPreview);
+            writeFlatPreview = EditorGUILayout.Toggle(SdfxLanguage.Rasterizer.WriteFlatPreviewField, writeFlatPreview);
             if (writeFlatPreview)
             {
-                backgroundColor = EditorGUILayout.ColorField("Flat Preview Background", backgroundColor);
+                backgroundColor = EditorGUILayout.ColorField(SdfxLanguage.Rasterizer.FlatPreviewBackgroundField, backgroundColor);
             }
 
-            settingsFoldout = EditorGUILayout.Foldout(settingsFoldout, "Vectorization Settings", true, EditorStyles.foldoutHeader);
+            settingsFoldout = EditorGUILayout.Foldout(
+                settingsFoldout,
+                SdfxLanguage.Rasterizer.VectorizationSettingsHeader,
+                true,
+                EditorStyles.foldoutHeader);
             if (settingsFoldout)
             {
                 using (new EditorGUI.IndentLevelScope())
                 {
-                    var newAlgorithm = (RasterVectorizationAlgorithm)EditorGUILayout.EnumPopup("Algorithm", options.Algorithm);
+                    var newAlgorithm = (RasterVectorizationAlgorithm)EditorGUILayout.EnumPopup(
+                        SdfxLanguage.Rasterizer.AlgorithmField,
+                        options.Algorithm);
                     if (newAlgorithm != options.Algorithm)
                     {
                         options.Algorithm = newAlgorithm;
@@ -105,20 +114,30 @@ namespace SDFX.Rasterizer.Editor
                     EditorGUILayout.Space(4f);
                     RasterAlgorithmUI.DrawAlgorithmSettings(options);
                     EditorGUILayout.Space(4f);
-                    EditorGUILayout.LabelField("Common", EditorStyles.miniBoldLabel);
-                    options.UseComputeAcceleration = EditorGUILayout.Toggle("Compute Acceleration", options.UseComputeAcceleration);
-                    options.MinAlpha = EditorGUILayout.Slider("Min Alpha", options.MinAlpha, 0f, 1f);
-                    options.MaxPrimitives = EditorGUILayout.IntField("Max Paths", options.MaxPrimitives);
+                    EditorGUILayout.LabelField(SdfxLanguage.Rasterizer.CommonSettingsLabel, EditorStyles.miniBoldLabel);
+                    options.UseComputeAcceleration = EditorGUILayout.Toggle(
+                        SdfxLanguage.Rasterizer.UseComputeAccelerationField,
+                        options.UseComputeAcceleration);
+                    options.MinAlpha = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.MinAlphaField, options.MinAlpha, 0f, 1f);
+                    options.MaxPrimitives = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MaxPathsField, options.MaxPrimitives);
                     if (UsesEdgeSampling(options.Algorithm))
                     {
-                        options.EdgeThreshold = EditorGUILayout.Slider("Edge Threshold", options.EdgeThreshold, 0f, 2f);
-                        options.SampleStride = EditorGUILayout.IntField("Sample Stride", options.SampleStride);
-                        options.UseTiling = EditorGUILayout.Toggle("Use Tiling", options.UseTiling);
+                        options.EdgeThreshold = EditorGUILayout.Slider(
+                            SdfxLanguage.Rasterizer.EdgeThresholdField,
+                            options.EdgeThreshold,
+                            0f,
+                            2f);
+                        options.SampleStride = EditorGUILayout.IntField(
+                            SdfxLanguage.Rasterizer.SampleStrideField,
+                            options.SampleStride);
+                        options.UseTiling = EditorGUILayout.Toggle(SdfxLanguage.Rasterizer.UseTilingField, options.UseTiling);
                         if (options.UseTiling)
                         {
-                            options.TileSize = EditorGUILayout.IntField("Tile Size", options.TileSize);
-                            options.TileOverlap = EditorGUILayout.IntField("Tile Overlap", options.TileOverlap);
-                            options.AutoTileMinDimension = EditorGUILayout.IntField("Auto Tile Min Dimension", options.AutoTileMinDimension);
+                            options.TileSize = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.TileSizeField, options.TileSize);
+                            options.TileOverlap = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.TileOverlapField, options.TileOverlap);
+                            options.AutoTileMinDimension = EditorGUILayout.IntField(
+                                SdfxLanguage.Rasterizer.AutoTileMinDimensionField,
+                                options.AutoTileMinDimension);
                         }
                     }
                 }
@@ -127,7 +146,7 @@ namespace SDFX.Rasterizer.Editor
             EditorGUILayout.Space(8f);
             using (new EditorGUI.DisabledScope(sourceTexture == null))
             {
-                if (GUILayout.Button("Convert To SVG", GUILayout.Height(28f)))
+                if (GUILayout.Button(SdfxLanguage.Rasterizer.ConvertToSvgButton, GUILayout.Height(28f)))
                 {
                     Convert();
                 }
@@ -142,7 +161,7 @@ namespace SDFX.Rasterizer.Editor
             {
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    if (GUILayout.Button("Ping SVG", GUILayout.Width(90f)))
+                    if (GUILayout.Button(SdfxLanguage.Rasterizer.PingSvgButton, GUILayout.Width(90f)))
                     {
                         var asset = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(lastSvgPath);
                         if (asset != null)
@@ -157,7 +176,7 @@ namespace SDFX.Rasterizer.Editor
             if (lastPreview != null)
             {
                 EditorGUILayout.Space(4f);
-                EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(SdfxLanguage.Rasterizer.PreviewLabel, EditorStyles.boldLabel);
                 var rect = GUILayoutUtility.GetRect(256f, 256f, GUILayout.ExpandWidth(true));
                 EditorGUI.DrawPreviewTexture(rect, lastPreview, null, ScaleMode.ScaleToFit);
             }
@@ -167,16 +186,18 @@ namespace SDFX.Rasterizer.Editor
         {
             if (sourceTexture == null)
             {
-                lastStatus = "Select a source texture.";
+                lastStatus = SdfxLanguage.Rasterizer.StatusSelectSource;
                 return;
             }
 
             var sourceAssetPath = AssetDatabase.GetAssetPath(sourceTexture);
-            var sourceName = string.IsNullOrWhiteSpace(sourceTexture.name) ? "Raster" : sourceTexture.name;
+            var sourceName = string.IsNullOrWhiteSpace(sourceTexture.name)
+                ? SdfxLanguage.Rasterizer.DefaultSourceName
+                : sourceTexture.name;
             var folder = ResolveOutputFolder(sourceAssetPath);
             if (string.IsNullOrEmpty(folder))
             {
-                lastStatus = "Could not resolve output folder.";
+                lastStatus = SdfxLanguage.Rasterizer.StatusOutputFolderFailed;
                 return;
             }
 
@@ -188,7 +209,7 @@ namespace SDFX.Rasterizer.Editor
             if (!result.Success)
             {
                 RasterToSvg.DestroyPreview(result);
-                lastStatus = "Conversion failed. Check the Console for details.";
+                lastStatus = SdfxLanguage.Rasterizer.StatusConversionFailed;
                 lastSvgPath = string.Empty;
                 return;
             }
@@ -200,7 +221,7 @@ namespace SDFX.Rasterizer.Editor
 
             lastPreview = result.OverlayPreview;
             lastSvgPath = svgPath;
-            lastStatus = $"Wrote {svgPath} ({result.PathCount} paths). Compile this SVG in Vector Texture Compiler.";
+            lastStatus = SdfxLanguage.Rasterizer.StatusConversionSuccess(svgPath, result.PathCount);
             SaveSettings();
             Repaint();
         }
@@ -217,13 +238,13 @@ namespace SDFX.Rasterizer.Editor
                 return Path.GetDirectoryName(sourceAssetPath)?.Replace("\\", "/") ?? string.Empty;
             }
 
-            return "Assets/Generated/SDFX";
+            return SdfxLanguage.Rasterizer.DefaultGeneratedOutputPath;
         }
 
         private void BrowseOutputFolder()
         {
             var start = string.IsNullOrWhiteSpace(outputDirectory) ? Application.dataPath : outputDirectory;
-            var selected = EditorUtility.OpenFolderPanel("SDFX Rasterizer Output", start, string.Empty);
+            var selected = EditorUtility.OpenFolderPanel(SdfxLanguage.Rasterizer.OutputFolderDialogTitle, start, string.Empty);
             if (string.IsNullOrWhiteSpace(selected))
             {
                 return;
@@ -237,7 +258,10 @@ namespace SDFX.Rasterizer.Editor
             }
             else
             {
-                EditorUtility.DisplayDialog("SDFX Rasterizer", "Output folder must be inside the Unity project Assets folder.", "OK");
+                EditorUtility.DisplayDialog(
+                    SdfxLanguage.Rasterizer.WindowTitle,
+                    SdfxLanguage.Rasterizer.OutputOutsideProject,
+                    SdfxLanguage.Rasterizer.OkButton);
             }
         }
 

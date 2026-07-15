@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using SDFX.VectorTextureCompiler.Core.CodeGen;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using SDFX.VectorTextureCompiler.Core.Presets;
 using UnityEditor;
 using UnityEngine;
@@ -12,19 +13,19 @@ namespace SDFX.VectorTextureCompiler.Editor
         {
             return new[]
             {
-                Build("toon-avatar", "Toon Avatar", new[] { "toon", "rim", "outline" },
+                Build("toon-avatar", SdfxLanguage.Modules.LookPreset("toon-avatar", "Toon Avatar"), new[] { "toon", "rim", "outline" },
                     BlendModePreset.Opaque,
                     ("_ToonSteps", 4f), ("_RimPower", 3f)),
-                Build("pbr-prop", "PBR Metal", new[] { "pbr", "normal", "reflection" },
+                Build("pbr-prop", SdfxLanguage.Modules.LookPreset("pbr-prop", "PBR Metal"), new[] { "pbr", "normal", "reflection" },
                     BlendModePreset.Opaque,
                     ("_PbrMode", 0f), ("_Metallic", 0.8f), ("_Roughness", 0.35f)),
-                Build("ui-card", "UI Card", new[] { "stylized", "glow", "transparency" },
+                Build("ui-card", SdfxLanguage.Modules.LookPreset("ui-card", "UI Card"), new[] { "stylized", "glow", "transparency" },
                     BlendModePreset.Transparent,
                     ("_Opacity", 0.95f)),
-                Build("quest-minimal", "Quest Minimal", new[] { "toon", "outline" },
+                Build("quest-minimal", SdfxLanguage.Modules.LookPreset("quest-minimal", "Quest Minimal"), new[] { "toon", "outline" },
                     BlendModePreset.Opaque,
                     ("_ToonSteps", 3f)),
-                Build("dissolve-vfx", "Dissolve VFX", new[] { "dissolve", "glow", "procedural" },
+                Build("dissolve-vfx", SdfxLanguage.Modules.LookPreset("dissolve-vfx", "Dissolve VFX"), new[] { "dissolve", "glow", "procedural" },
                     BlendModePreset.Additive,
                     ("_DissolveAmount", 0.35f))
             };

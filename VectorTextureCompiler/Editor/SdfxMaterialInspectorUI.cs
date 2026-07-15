@@ -93,7 +93,8 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                     if (GUILayout.Button(SdfxLanguage.ShaderGui.LookPresetSaveAs, GUILayout.Height(22f)))
                     {
-                        SavePresetFromMaterial(material);
+                        var target = material;
+                        EditorApplication.delayCall += () => SavePresetFromMaterial(target);
                     }
 
                     if (GUILayout.Button(SdfxLanguage.ShaderGui.LookPresetCapture, GUILayout.Height(22f)))
@@ -263,17 +264,34 @@ namespace SDFX.VectorTextureCompiler.Editor
                 return null;
             }
 
+            CompiledVectorTextureAsset textureMatch = null;
+            var prim = material.HasProperty("_PrimitiveDataTex")
+                ? material.GetTexture("_PrimitiveDataTex")
+                : null;
+
             var guids = AssetDatabase.FindAssets("t:CompiledVectorTextureAsset");
             foreach (var guid in guids)
             {
                 var asset = AssetDatabase.LoadAssetAtPath<CompiledVectorTextureAsset>(AssetDatabase.GUIDToAssetPath(guid));
-                if (asset != null && asset.material == material)
+                if (asset == null)
+                {
+                    continue;
+                }
+
+                if (asset.material == material)
                 {
                     return asset;
                 }
+
+                if (textureMatch == null
+                    && prim != null
+                    && asset.primitiveDataTexture == prim)
+                {
+                    textureMatch = asset;
+                }
             }
 
-            return null;
+            return textureMatch;
         }
 
         public static int CountEnabledModules(Material material, IReadOnlyList<ShaderModule> modules)

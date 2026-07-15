@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using SDFX.VectorTextureCompiler.Core.Localization;
 
 namespace SDFX.VectorTextureCompiler.Core.Modules
 {
@@ -15,18 +16,19 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
         {
             get
             {
+                var modeDisplay = SdfxLanguage.Modules.ModePropertyDisplayName;
                 var extra = GetAdditionalProperties();
                 if (extra == null || extra.Count == 0)
                 {
                     return new[]
                     {
-                        ModuleProperty.Enum(ModePropertyName, "Mode", ModeLabels, descriptions: ModeDescriptions)
+                        ModuleProperty.Enum(ModePropertyName, modeDisplay, ModeLabels, descriptions: ModeDescriptions)
                     };
                 }
 
                 var list = new List<ModuleProperty>(extra.Count + 1)
                 {
-                    ModuleProperty.Enum(ModePropertyName, "Mode", ModeLabels, descriptions: ModeDescriptions)
+                    ModuleProperty.Enum(ModePropertyName, modeDisplay, ModeLabels, descriptions: ModeDescriptions)
                 };
                 list.AddRange(extra);
                 return list;
@@ -48,13 +50,22 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
                 var body = EmitFragmentForMode(i);
                 if (!string.IsNullOrWhiteSpace(body))
                 {
-                    sb.AppendLine(body);
+                    AppendMultiline(sb, body);
                 }
 
                 sb.AppendLine("}");
             }
 
             return sb.ToString().TrimEnd();
+        }
+
+        private static void AppendMultiline(StringBuilder sb, string body)
+        {
+            var lines = body.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            for (var i = 0; i < lines.Length; i++)
+            {
+                sb.AppendLine(lines[i].TrimEnd());
+            }
         }
     }
 }

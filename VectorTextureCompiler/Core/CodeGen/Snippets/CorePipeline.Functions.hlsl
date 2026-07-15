@@ -19,6 +19,18 @@ half3 SdfxApplyBaseColorGrading(half3 rgb, half4 vertexColor, half useVertexColo
     rgb = saturate((rgb - 0.5h) * _Contrast + 0.5h + _Brightness);
     half luma = dot(rgb, half3(0.299h, 0.587h, 0.114h));
     rgb = lerp(half3(luma, luma, luma), rgb, _Saturation);
+
+    // Vibrance-style boost: lifts washed-out (low-chroma) colors more than already vivid ones.
+    if (_ColorBoost > 1e-4h)
+    {
+        half maxC = max(rgb.r, max(rgb.g, rgb.b));
+        half minC = min(rgb.r, min(rgb.g, rgb.b));
+        half chroma = maxC - minC;
+        half boostLuma = dot(rgb, half3(0.299h, 0.587h, 0.114h));
+        half vibrance = _ColorBoost * (1.0h - saturate(chroma * 1.5h));
+        rgb = lerp(half3(boostLuma, boostLuma, boostLuma), rgb, 1.0h + vibrance);
+    }
+
     rgb *= _Exposure;
     return rgb;
 }

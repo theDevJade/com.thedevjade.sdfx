@@ -36,14 +36,15 @@ namespace SDFX.VectorTextureCompiler.Editor
         private CompileReport latestReport;
         private string latestCompiledAssetPath = string.Empty;
         private readonly Dictionary<string, bool> moduleSelection = new Dictionary<string, bool>();
+        private readonly Dictionary<ModuleCategory, bool> moduleCategoryFoldouts = new Dictionary<ModuleCategory, bool>();
         private bool modulesFoldout = true;
         private bool conflictsFoldout;
-        private bool reportFoldout = true;
+        private bool reportFoldout;
         private string modulePresetId = "avatar";
         private int moduleLodTier;
         private int compileBlendMode;
         private bool sourceFoldout = true;
-        private bool compileOptionsFoldout = true;
+        private bool compileOptionsFoldout;
 
         [MenuItem(SdfxLanguage.Menu.OpenCompilerWindow)]
         public static void Open()
@@ -51,13 +52,21 @@ namespace SDFX.VectorTextureCompiler.Editor
             var window = GetWindow<VectorTextureCompilerWindow>();
             window.titleContent = new GUIContent(SdfxLanguage.EditorWindow.WindowTitle);
             window.minSize = new Vector2(420f, 480f);
+            window.ApplyOpenDefaults();
             window.LoadPersistedReport();
         }
 
         private void OnEnable()
         {
             LoadSettings();
+            ApplyOpenDefaults();
             LoadPersistedReport();
+        }
+
+        private void ApplyOpenDefaults()
+        {
+            reportFoldout = false;
+            compileOptionsFoldout = false;
         }
 
         private void OnDisable()
@@ -188,6 +197,13 @@ namespace SDFX.VectorTextureCompiler.Editor
                         CompileSelected();
                     }
                 }
+
+                if (GUILayout.Button(SdfxLanguage.EditorWindow.ClearReportButton, GUILayout.Height(28f), GUILayout.Width(120f)))
+                {
+                    ClearLatestReport();
+                }
+
+                GUILayout.FlexibleSpace();
             }
         }
 
@@ -291,21 +307,51 @@ namespace SDFX.VectorTextureCompiler.Editor
                 SdfxLanguage.EditorWindow.SamplerBudgetLabel,
                 $"{samplerCount} / {CorePipeline.QuestMaxSamplerBudget}");
 
-            var conflicts = ShaderModuleRegistry.ValidateSelection(selectedIds);
+            var conflicts = ShaderModuleRegistry.FindConflicts(selectedIds);
             if (conflicts.Count > 0)
             {
                 var conflictTitle = SdfxLanguage.EditorWindow.ModuleConflictsFoldout(conflicts.Count);
                 conflictsFoldout = EditorGUILayout.Foldout(conflictsFoldout, conflictTitle, true, EditorStyles.foldoutHeader);
                 if (conflictsFoldout)
                 {
-                    var conflictScrollHeight = Mathf.Clamp(conflicts.Count * 42f, 48f, 120f);
+                    var conflictScrollHeight = Mathf.Clamp(conflicts.Count * 48f, 48f, 160f);
                     conflictScroll = SdfxEditorScroll.Begin(
                         conflictScroll,
                         GUILayout.ExpandWidth(true),
                         GUILayout.MaxHeight(conflictScrollHeight));
                     foreach (var conflict in conflicts)
                     {
-                        EditorGUILayout.HelpBox(conflict, MessageType.Warning);
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            EditorGUILayout.HelpBox(conflict.Message, MessageType.Warning);
+                            var left = ShaderModuleRegistry.Find(conflict.LeftId);
+                            var right = ShaderModuleRegistry.Find(conflict.RightId);
+                            var leftName = left?.DisplayName ?? conflict.LeftId;
+                            var rightName = right?.DisplayName ?? conflict.RightId;
+                            if (GUILayout.Button(
+                                    new GUIContent(
+                                        leftName,
+                                        SdfxLanguage.EditorWindow.DisableModuleTooltip(leftName)),
+                                    GUILayout.Width(88f),
+                                    GUILayout.Height(38f)))
+                            {
+                                moduleSelection[conflict.LeftId] = false;
+                                SaveSettings();
+                                GUIUtility.ExitGUI();
+                            }
+
+                            if (GUILayout.Button(
+                                    new GUIContent(
+                                        rightName,
+                                        SdfxLanguage.EditorWindow.DisableModuleTooltip(rightName)),
+                                    GUILayout.Width(88f),
+                                    GUILayout.Height(38f)))
+                            {
+                                moduleSelection[conflict.RightId] = false;
+                                SaveSettings();
+                                GUIUtility.ExitGUI();
+                            }
+                        }
                     }
 
                     SdfxEditorScroll.End();
@@ -327,6 +373,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             }
 
             var visibleCount = 0;
+            var searching = SdfxEditorSearch.HasQuery(moduleSearch);
             var moduleScrollHeight = Mathf.Clamp(position.height * 0.38f, 200f, 520f);
             moduleListScroll = SdfxEditorScroll.Begin(
                 moduleListScroll,
@@ -344,25 +391,46 @@ namespace SDFX.VectorTextureCompiler.Editor
                 }
 
                 visibleCount += visibleModules.Count;
-                EditorGUILayout.LabelField(categoryLabel, EditorStyles.miniBoldLabel);
-                foreach (var module in visibleModules)
+                var selectedInCategory = visibleModules.Count(m => IsModuleSelected(m.Id));
+                var foldoutLabel = SdfxLanguage.ShaderGui.CategoryWithCount(categoryLabel, selectedInCategory, visibleModules.Count);
+                var open = searching || IsCategoryFoldoutOpen(group.Key);
+                var nextOpen = EditorGUILayout.Foldout(open, foldoutLabel, true, EditorStyles.foldoutHeader);
+                if (!searching)
                 {
-                    var selected = IsModuleSelected(module.Id);
-                    var isAsset = module is AssetBackedShaderModule;
-                    var label = isAsset
-                        ? $"{module.DisplayName} [{SdfxLanguage.EditorWindow.ModulesAssetBadge}]"
-                        : module.DisplayName;
-                    using (new EditorGUILayout.HorizontalScope())
+                    moduleCategoryFoldouts[group.Key] = nextOpen;
+                    open = nextOpen;
+                }
+                else
+                {
+                    open = true;
+                }
+
+                if (!open)
+                {
+                    continue;
+                }
+
+                using (new EditorGUI.IndentLevelScope())
+                {
+                    foreach (var module in visibleModules)
                     {
-                        moduleSelection[module.Id] = EditorGUILayout.ToggleLeft(
-                            new GUIContent(label, module.Description),
-                            selected);
-                        if (isAsset && module is AssetBackedShaderModule assetModule && assetModule.Definition != null)
+                        var selected = IsModuleSelected(module.Id);
+                        var isAsset = module is AssetBackedShaderModule;
+                        var label = isAsset
+                            ? $"{module.DisplayName} [{SdfxLanguage.EditorWindow.ModulesAssetBadge}]"
+                            : module.DisplayName;
+                        using (new EditorGUILayout.HorizontalScope())
                         {
-                            if (GUILayout.Button(SdfxLanguage.EditorWindow.ModulesPingAssetButton, EditorStyles.miniButton, GUILayout.Width(44f)))
+                            moduleSelection[module.Id] = EditorGUILayout.ToggleLeft(
+                                new GUIContent(label, module.Description),
+                                selected);
+                            if (isAsset && module is AssetBackedShaderModule assetModule && assetModule.Definition != null)
                             {
-                                EditorGUIUtility.PingObject(assetModule.Definition);
-                                Selection.activeObject = assetModule.Definition;
+                                if (GUILayout.Button(SdfxLanguage.EditorWindow.ModulesPingAssetButton, EditorStyles.miniButton, GUILayout.Width(44f)))
+                                {
+                                    EditorGUIUtility.PingObject(assetModule.Definition);
+                                    Selection.activeObject = assetModule.Definition;
+                                }
                             }
                         }
                     }
@@ -376,6 +444,9 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             SdfxEditorScroll.End();
         }
+
+        private bool IsCategoryFoldoutOpen(ModuleCategory category)
+            => moduleCategoryFoldouts.TryGetValue(category, out var open) && open;
 
         private void ApplyModulePreset(string presetId)
         {
@@ -637,14 +708,7 @@ namespace SDFX.VectorTextureCompiler.Editor
         private void DrawLatestReport()
         {
             EditorGUILayout.Space(4f);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                reportFoldout = EditorGUILayout.Foldout(reportFoldout, SdfxLanguage.EditorWindow.LatestCompileReportHeader, true, EditorStyles.foldoutHeader);
-                if (GUILayout.Button(SdfxLanguage.EditorWindow.ClearReportButton, GUILayout.Width(110f)))
-                {
-                    ClearLatestReport();
-                }
-            }
+            reportFoldout = EditorGUILayout.Foldout(reportFoldout, SdfxLanguage.EditorWindow.LatestCompileReportHeader, true, EditorStyles.foldoutHeader);
 
             if (!reportFoldout)
             {

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using SDFX.Rasterizer;
+using SDFX.VectorTextureCompiler.Core.Localization;
 using UnityEngine;
 
 namespace SDFX.Rasterizer.Inference
@@ -20,7 +21,7 @@ namespace SDFX.Rasterizer.Inference
             {
                 issues?.Add(new RasterIssue(
                     RasterIssueSeverity.Warning,
-                    "Using fallback segmentation.",
+                    SdfxLanguage.Rasterizer.InferenceUsingFallback,
                     "raster",
                     0,
                     RasterIssueCode.RasterUsingFallbackSegmentation));
@@ -30,22 +31,22 @@ namespace SDFX.Rasterizer.Inference
             if (!TryRunModelSegmentation(image, modelPath, confidenceThreshold, out labels, out var failureReason))
             {
                 var message = string.IsNullOrWhiteSpace(failureReason)
-                    ? "Model load failed."
-                    : $"Model load failed: {failureReason}";
+                    ? SdfxLanguage.Rasterizer.InferenceModelLoadFailed
+                    : SdfxLanguage.Rasterizer.InferenceModelLoadFailedDetail(failureReason);
                 issues?.Add(new RasterIssue(
                     RasterIssueSeverity.Warning,
                     message,
                     "raster",
                     0,
                     RasterIssueCode.RasterModelLoadFailed));
-                Debug.LogWarning($"SDFX raster inference: {message}");
+                Debug.LogWarning(SdfxLanguage.Rasterizer.InferenceLogWarning(message));
                 labels = FallbackSegmentation(image, confidenceThreshold);
                 return true;
             }
 
             issues?.Add(new RasterIssue(
                 RasterIssueSeverity.Warning,
-                "Model active.",
+                SdfxLanguage.Rasterizer.InferenceModelActive,
                 "raster",
                 0,
                 RasterIssueCode.RasterModelActive));

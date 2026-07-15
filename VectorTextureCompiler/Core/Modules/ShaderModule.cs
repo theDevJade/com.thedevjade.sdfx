@@ -22,7 +22,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
 
     /*
      * Hook locals in scope:
-     * Fragment: uv, col, sdfDist, worldNormal, viewDir, i
+     * Fragment: uv, col, art, sdfDist, worldNormal, viewDir, i
      * UV: uv, i
      * Vertex: v, o
      */

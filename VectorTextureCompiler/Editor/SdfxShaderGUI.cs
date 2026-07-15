@@ -66,6 +66,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             DrawBakedDataSection(materialEditor, material, properties, search);
             DrawDebugSection(materialEditor, properties, search);
             DrawAdvancedSection(materialEditor, properties, search);
+            DrawShaderActions(material, compiledModules);
         }
 
 
@@ -138,11 +139,12 @@ namespace SDFX.VectorTextureCompiler.Editor
                 }
 
                 if (DrawSubSection("core.color", SdfxLanguage.ShaderGui.SubColorGrading, search, headerMatches,
-                        "_Brightness", "_Contrast", "_Saturation", "_Exposure"))
+                        "_Brightness", "_Contrast", "_Saturation", "_ColorBoost", "_Exposure"))
                 {
                     DrawPropertyIfPresent(materialEditor, properties, "_Brightness", search, headerMatches);
                     DrawPropertyIfPresent(materialEditor, properties, "_Contrast", search, headerMatches);
                     DrawPropertyIfPresent(materialEditor, properties, "_Saturation", search, headerMatches);
+                    DrawPropertyIfPresent(materialEditor, properties, "_ColorBoost", search, headerMatches);
                     DrawPropertyIfPresent(materialEditor, properties, "_Exposure", search, headerMatches);
                 }
 
@@ -503,6 +505,63 @@ namespace SDFX.VectorTextureCompiler.Editor
                 materialEditor.RenderQueueField();
                 materialEditor.EnableInstancingField();
                 materialEditor.DoubleSidedGIField();
+            }
+        }
+
+        private static void DrawShaderActions(Material material, IReadOnlyList<ShaderModule> compiledModules)
+        {
+            EditorGUILayout.Space(8f);
+            using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+            {
+                EditorGUILayout.LabelField(SdfxLanguage.ShaderGui.ShaderActionsHeader, EditorStyles.boldLabel);
+                EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.ShaderActionsHelp, MessageType.None);
+
+                var compiled = SdfxMaterialInspectorUI.FindCompiledAsset(material);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(compiled == null))
+                    {
+                        if (GUILayout.Button(SdfxLanguage.ShaderGui.OptimizeButton, GUILayout.Height(28f)))
+                        {
+                            var enabledCount = SdfxMaterialInspectorUI.CountEnabledModules(material, compiledModules);
+                            var confirm = EditorUtility.DisplayDialog(
+                                SdfxLanguage.ShaderGui.OptimizeConfirmTitle,
+                                SdfxLanguage.ShaderGui.OptimizeConfirmMessage(enabledCount, compiledModules.Count),
+                                SdfxLanguage.ShaderGui.OptimizeButton,
+                                SdfxLanguage.ShaderGui.CancelButton);
+                            if (confirm)
+                            {
+                                var target = material;
+                                EditorApplication.delayCall += () =>
+                                {
+                                    if (SdfxCompilerActions.TryOptimizeShader(target, out var message))
+                                    {
+                                        Debug.Log(message);
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(message))
+                                    {
+                                        EditorUtility.DisplayDialog(
+                                            SdfxLanguage.ShaderGui.OptimizeConfirmTitle,
+                                            message,
+                                            SdfxLanguage.ShaderGui.OkButton);
+                                    }
+                                };
+                            }
+                        }
+
+                        if (GUILayout.Button(SdfxLanguage.ShaderGui.RecompileShaderButton, GUILayout.Height(28f)))
+                        {
+                            var target = material;
+                            var asset = compiled;
+                            EditorApplication.delayCall += () => SdfxModulePickerWindow.Open(target, asset);
+                        }
+                    }
+                }
+
+                if (compiled == null)
+                {
+                    EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.NoCompiledAsset, MessageType.Warning);
+                }
             }
         }
 

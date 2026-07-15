@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using SDFX.VectorTextureCompiler.Core.Localization;
 
 namespace SDFX.VectorTextureCompiler.Core.Modules
 {
@@ -97,7 +98,7 @@ namespace SDFX.VectorTextureCompiler.Core.Modules
         {
             if (labels == null || labels.Length == 0)
             {
-                throw new ArgumentException("Enum property requires at least one label.", nameof(labels));
+                throw new ArgumentException(SdfxLanguage.Compiler.EnumPropertyRequiresLabels, nameof(labels));
             }
 
             var attributes = string.Empty;
