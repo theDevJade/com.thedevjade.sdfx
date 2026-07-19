@@ -70,6 +70,12 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
         /// </summary>
         public bool EnableForwardAddPass { get; set; }
 
+        /// <summary>
+        /// When true, the generated ForwardBase pass receives the main directional
+        /// light's realtime shadows.
+        /// </summary>
+        public bool EnableShadowReceiving { get; set; }
+
         public List<DecalCompositor.DecalLayer> DecalLayers { get; set; }
     }
 
@@ -285,7 +291,8 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 Modules = resolvedModules,
                 OptimizationProfile = options.OptimizationProfile,
                 FlatTextures = FlatTextureLayout.FromTextures(primitiveTex, gridIndexTex, pathTex),
-                EnableForwardAddPass = options.EnableForwardAddPass
+                EnableForwardAddPass = options.EnableForwardAddPass,
+                EnableShadowReceiving = options.EnableShadowReceiving
             };
 
             if (resolvedModules.Count > 20)

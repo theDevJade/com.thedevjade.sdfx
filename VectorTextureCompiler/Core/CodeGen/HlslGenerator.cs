@@ -33,6 +33,17 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
         /// </summary>
         public bool EnableForwardAddPass { get; set; }
 
+        /// <summary>
+        /// When true, the ForwardBase pass receives the main directional light's
+        /// realtime shadows
+        /// </summary>
+        public bool EnableShadowReceiving { get; set; }
+
+        /// <summary>
+        /// Effective shadow-receiving state.
+        /// </summary>
+        public bool ReceivesShadows => EnableShadowReceiving && OptimizationProfile != OptimizationProfile.Quest;
+
         public IReadOnlyList<ShaderModule> ResolvedModules => Modules ?? ShaderModuleRegistry.All;
 
         public BlendModePreset ResolvedBlendMode
@@ -379,6 +390,11 @@ fixed4 fragAdd (v2fAdd i) : SV_Target
             sb.AppendLine("            #pragma fragment frag");
             sb.AppendLine("            #pragma multi_compile_instancing");
             sb.AppendLine("            #pragma multi_compile_fog");
+            if (request.ReceivesShadows)
+            {
+                sb.AppendLine("            #pragma multi_compile_fwdbase nolightmap nodynlightmap nodirlightmap novertexlight");
+            }
+
             sb.AppendLine("            #pragma shader_feature_local _SDFX_PRECISION_HALF");
             foreach (var module in modules)
             {
@@ -387,13 +403,18 @@ fixed4 fragAdd (v2fAdd i) : SV_Target
 
             sb.AppendLine("            #include \"UnityCG.cginc\"");
             sb.AppendLine("            #include \"Lighting.cginc\"");
+            if (request.ReceivesShadows)
+            {
+                sb.AppendLine("            #include \"AutoLight.cginc\"");
+            }
+
             sb.AppendLine();
 
             EmitDefines(sb, request);
             EmitUniforms(sb, modules);
-            AppendBlock(sb, ShaderSnippets.VertexStageStructs, PassIndent);
+            AppendBlock(sb, ApplyShadowReceiveTokens(ShaderSnippets.VertexStageStructs, request), PassIndent);
             sb.AppendLine();
-            EmitVertexShader(sb, modules);
+            EmitVertexShader(sb, request);
             sb.AppendLine();
             AppendBlock(sb, ShaderSnippets.DataDecodeFunctions, PassIndent);
             sb.AppendLine();
@@ -561,10 +582,10 @@ sampler2D _SdfxGrabTex;
             return functions;
         }
 
-        private static void EmitVertexShader(StringBuilder sb, IReadOnlyList<ShaderModule> modules)
+        private static void EmitVertexShader(StringBuilder sb, ShaderGenerationRequest request)
         {
             var hooks = new StringBuilder();
-            foreach (var module in modules)
+            foreach (var module in request.ResolvedModules)
             {
                 var hook = module.EmitVertexHook();
                 if (string.IsNullOrWhiteSpace(hook))
@@ -582,7 +603,22 @@ sampler2D _SdfxGrabTex;
             var vertexSource = ShaderSnippets.VertexStageVertexShader.Replace(
                 ShaderSnippets.VertexHooksToken,
                 hooks.ToString().TrimEnd());
+            vertexSource = ApplyShadowReceiveTokens(vertexSource, request);
             AppendBlock(sb, vertexSource, PassIndent);
+        }
+
+        private static string ApplyShadowReceiveTokens(string source, ShaderGenerationRequest request)
+        {
+            if (string.IsNullOrEmpty(source))
+            {
+                return source;
+            }
+
+            var coords = request.ReceivesShadows ? "SHADOW_COORDS(4)" : string.Empty;
+            var transfer = request.ReceivesShadows ? "TRANSFER_SHADOW(o)" : string.Empty;
+            return source
+                .Replace(ShaderSnippets.ShadowReceiveCoordsToken, coords)
+                .Replace(ShaderSnippets.ShadowReceiveTransferToken, transfer);
         }
 
         private static void EmitFragmentShader(StringBuilder sb, ShaderGenerationRequest request)
@@ -603,8 +639,7 @@ sampler2D _SdfxGrabTex;
 float sdfDist;
 fixed4 art = SdfxEvaluate(uv, sdfDist);
 
-// art.rgb is coverage-composited (premultiplied over 0). Composite over background, then unpremultiply for SrcAlpha blending.
-fixed4 col;
+
 col.a   = art.a + _BackgroundColor.a * (1.0 - art.a);
 col.rgb = art.rgb + _BackgroundColor.rgb * _BackgroundColor.a * (1.0 - art.a);
 col.rgb /= max(col.a, 1e-4);
@@ -619,6 +654,11 @@ col.rgb = SdfxApplyBaseColorGrading(col.rgb, i.vertexColor, _UseVertexColor, _Ve
             sb.AppendLine($"{bodyIndent}float camDist = distance(_WorldSpaceCameraPos, i.worldPos);");
             sb.AppendLine($"{bodyIndent}float sdfxFade = saturate(1.0 - (camDist - 8.0) * _SdfxDistanceFade * 0.02);");
             sb.AppendLine($"{bodyIndent}SdfxSignals sdfxSignals = SdfxComputeSignals(uv, i.worldPos, worldNormal, viewDir, sdfDist);");
+            if (request.ReceivesShadows)
+            {
+                sb.AppendLine($"{bodyIndent}fixed sdfxShadowAtten = SHADOW_ATTENUATION(i);");
+                sb.AppendLine($"{bodyIndent}sdfxSignals.lightColor *= sdfxShadowAtten;");
+            }
 
             EmitHooks(sb, modules, bodyIndent, m => m.EmitFragmentHook());
 

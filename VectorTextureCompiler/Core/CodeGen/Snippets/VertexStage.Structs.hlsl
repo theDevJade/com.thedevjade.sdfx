@@ -15,5 +15,6 @@ struct v2f
     float3 worldNormal : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
     float4 vertexColor : COLOR;
+    {{SHADOW_RECEIVE_COORDS}}
     UNITY_VERTEX_OUTPUT_STEREO
 };

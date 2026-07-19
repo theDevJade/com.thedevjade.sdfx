@@ -112,6 +112,15 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string EnableForwardAddPassHelp => Get(
                 "editor.enableForwardAddPassHelp",
                 "Adds realtime point/spot lighting.");
+            public static string EnableShadowReceivingField => Get(
+                "editor.enableShadowReceivingField",
+                "Receive Shadows");
+            public static string EnableShadowReceivingHelp => Get(
+                "editor.enableShadowReceivingHelp",
+                "ForwardBase receives the main directional light's realtime shadows");
+            public static string EnableShadowReceivingQuestHelp => Get(
+                "editor.enableShadowReceivingQuestHelp",
+                "Shadow receiving is skipped on the Quest profile.");
             public static string ReportPingButton => Get("editor.reportPingButton", "Ping Asset");
             public static string ReportOpenFolderButton => Get("editor.reportOpenFolderButton", "Open Folder");
             public static string ReportRecompileButton => Get("editor.reportRecompileButton", "Recompile");
@@ -547,6 +556,14 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
                 "shadergui.recompileShaderHelp",
                 "Choose which modules to bake into the shader. Data textures are not rebuilt. Add modules here, then enable them on the material.");
             public static string RecompileShaderConfirm => Get("shadergui.recompileShaderConfirm", "Re-compile Shader");
+            public static string ReceiveShadowsField => Get("shadergui.receiveShadowsField", "Receive Main Light Shadows");
+            public static string ReceiveShadowsTooltip => Get(
+                "shadergui.receiveShadowsTooltip",
+                "Bakes a ForwardBase path into the shader.");
+            public static string ForwardAddPassField => Get("shadergui.forwardAddPassField", "ForwardAdd Pass)");
+            public static string ForwardAddPassTooltip => Get(
+                "shadergui.forwardAddPassTooltip",
+                "Bakes an additive ForwardAdd pass for realtime point/spot lights. Very expensive.");
             public static string CancelButton => Get("shadergui.cancelButton", "Cancel");
             public static string ModulesSelectEnabled => Get("shadergui.modulesSelectEnabled", "Enabled");
             public static string ModuleNotInShaderSuffix => Get("shadergui.moduleNotInShaderSuffix", "(new)");

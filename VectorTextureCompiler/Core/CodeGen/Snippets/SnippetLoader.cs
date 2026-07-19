@@ -12,6 +12,8 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen.Snippets
 
         public const string MaxPerCellToken = "{{MAX_PRIMITIVES_PER_CELL}}";
         public const string VertexHooksToken = "{{VERTEX_HOOKS}}";
+        public const string ShadowReceiveCoordsToken = "{{SHADOW_RECEIVE_COORDS}}";
+        public const string ShadowReceiveTransferToken = "{{SHADOW_RECEIVE_TRANSFER}}";
 
         private static readonly Dictionary<string, CachedSnippet> Cache = new();
 
@@ -53,6 +55,8 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen.Snippets
     {
         public const string MaxPerCellToken = SnippetLoader.MaxPerCellToken;
         public const string VertexHooksToken = SnippetLoader.VertexHooksToken;
+        public const string ShadowReceiveCoordsToken = SnippetLoader.ShadowReceiveCoordsToken;
+        public const string ShadowReceiveTransferToken = SnippetLoader.ShadowReceiveTransferToken;
 
         public static string DataDecodeFunctions => SnippetLoader.Load("DataDecode.Functions.hlsl");
         public static string SdfFunctionTypeDefines => SnippetLoader.Load("SdfFunction.TypeDefines.hlsl");

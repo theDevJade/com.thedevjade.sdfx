@@ -72,13 +72,22 @@ namespace SDFX.VectorTextureCompiler.Editor
                 return false;
             }
 
-            return TryRegenerateShaderOnly(material, compiled, enabled, out message);
+            var shaderPath = AssetDatabase.GetAssetPath(material.shader);
+            return TryRegenerateShaderOnly(
+                material,
+                compiled,
+                enabled,
+                ReadReceivesShadows(shaderPath),
+                ReadForwardAddPass(shaderPath),
+                out message);
         }
 
         public static bool TryRegenerateShaderOnly(
             Material material,
             CompiledVectorTextureAsset compiledAsset,
             IReadOnlyList<string> moduleIds,
+            bool enableShadowReceiving,
+            bool enableForwardAddPass,
             out string message)
         {
             message = string.Empty;
@@ -179,7 +188,9 @@ namespace SDFX.VectorTextureCompiler.Editor
                 BlendMode = blend,
                 Modules = resolvedModules,
                 OptimizationProfile = profile,
-                FlatTextures = FlatTextureLayout.FromTextures(prim, gridIndex, path)
+                FlatTextures = FlatTextureLayout.FromTextures(prim, gridIndex, path),
+                EnableShadowReceiving = enableShadowReceiving,
+                EnableForwardAddPass = enableForwardAddPass
             };
 
             var projectRoot = Directory.GetParent(Application.dataPath);
@@ -269,6 +280,44 @@ namespace SDFX.VectorTextureCompiler.Editor
                 {
                     material.DisableKeyword(module.Keyword);
                 }
+            }
+        }
+
+        public static bool ReadReceivesShadows(string shaderAssetPath)
+        {
+            if (string.IsNullOrWhiteSpace(shaderAssetPath)
+                || !shaderAssetPath.EndsWith(".shader", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            try
+            {
+                var text = File.ReadAllText(shaderAssetPath);
+                return Regex.IsMatch(text, @"#pragma\s+multi_compile_fwdbase");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public static bool ReadForwardAddPass(string shaderAssetPath)
+        {
+            if (string.IsNullOrWhiteSpace(shaderAssetPath)
+                || !shaderAssetPath.EndsWith(".shader", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            try
+            {
+                var text = File.ReadAllText(shaderAssetPath);
+                return text.IndexOf("SDFX_ForwardAdd", StringComparison.Ordinal) >= 0;
+            }
+            catch
+            {
+                return false;
             }
         }
 

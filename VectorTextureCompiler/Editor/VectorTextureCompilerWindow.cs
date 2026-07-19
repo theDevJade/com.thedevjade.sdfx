@@ -46,6 +46,7 @@ namespace SDFX.VectorTextureCompiler.Editor
         private bool sourceFoldout = true;
         private bool compileOptionsFoldout;
         private bool enableForwardAddPass;
+        private bool enableShadowReceiving;
         private bool decalLayersFoldout;
         private readonly List<DecalCompositor.DecalLayer> decalLayers = new List<DecalCompositor.DecalLayer>();
 
@@ -182,6 +183,18 @@ namespace SDFX.VectorTextureCompiler.Editor
                 if (enableForwardAddPass)
                 {
                     EditorGUILayout.HelpBox(SdfxLanguage.EditorWindow.EnableForwardAddPassHelp, MessageType.Info);
+                }
+
+                enableShadowReceiving = EditorGUILayout.Toggle(
+                    SdfxLanguage.EditorWindow.EnableShadowReceivingField,
+                    enableShadowReceiving);
+                if (enableShadowReceiving)
+                {
+                    EditorGUILayout.HelpBox(
+                        optimizationProfile == OptimizationProfile.Quest
+                            ? SdfxLanguage.EditorWindow.EnableShadowReceivingQuestHelp
+                            : SdfxLanguage.EditorWindow.EnableShadowReceivingHelp,
+                        optimizationProfile == OptimizationProfile.Quest ? MessageType.Warning : MessageType.Info);
                 }
             }
         }
@@ -604,6 +617,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             SetSetting("moduleLodTier", moduleLodTier.ToString());
             SetSetting("compileBlendMode", compileBlendMode.ToString());
             SetSetting("enableForwardAddPass", enableForwardAddPass.ToString());
+            SetSetting("enableShadowReceiving", enableShadowReceiving.ToString());
 
             var disabledModules = ShaderModuleRegistry.All
                 .Where(m => !IsModuleSelected(m.Id))
@@ -640,6 +654,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             moduleLodTier = GetSettingInt("moduleLodTier", moduleLodTier);
             compileBlendMode = Mathf.Max(0, GetSettingInt("compileBlendMode", compileBlendMode));
             enableForwardAddPass = GetSettingBool("enableForwardAddPass", enableForwardAddPass);
+            enableShadowReceiving = GetSettingBool("enableShadowReceiving", enableShadowReceiving);
 
             moduleSelection.Clear();
             var disabledCsv = GetSettingString("disabledModules", string.Empty);
@@ -730,6 +745,7 @@ namespace SDFX.VectorTextureCompiler.Editor
                     ? null
                     : (BlendModePreset?)(compileBlendMode - 1),
                 EnableForwardAddPass = enableForwardAddPass,
+                EnableShadowReceiving = enableShadowReceiving,
                 DecalLayers = decalLayers.Count > 0 ? new List<DecalCompositor.DecalLayer>(decalLayers) : null
             };
         }

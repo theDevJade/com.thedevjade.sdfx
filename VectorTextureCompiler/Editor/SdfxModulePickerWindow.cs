@@ -16,6 +16,8 @@ namespace SDFX.VectorTextureCompiler.Editor
         private readonly Dictionary<string, bool> selected = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         private Vector2 scroll;
         private string search = string.Empty;
+        private bool receiveShadows;
+        private bool forwardAddPass;
 
         public static void Open(Material material, CompiledVectorTextureAsset compiledAsset)
         {
@@ -46,6 +48,10 @@ namespace SDFX.VectorTextureCompiler.Editor
                               && material.GetFloat(module.ToggleProperty) > 0.5f;
                 selected[module.Id] = inShader || enabled;
             }
+
+            var shaderPath = material != null ? AssetDatabase.GetAssetPath(material.shader) : null;
+            receiveShadows = SdfxCompilerActions.ReadReceivesShadows(shaderPath);
+            forwardAddPass = SdfxCompilerActions.ReadForwardAddPass(shaderPath);
         }
 
         private void OnGUI()
@@ -58,6 +64,18 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             EditorGUILayout.LabelField(material.name, EditorStyles.boldLabel);
             EditorGUILayout.HelpBox(SdfxLanguage.ShaderGui.RecompileShaderHelp, MessageType.Info);
+
+            receiveShadows = EditorGUILayout.ToggleLeft(
+                new GUIContent(
+                    SdfxLanguage.ShaderGui.ReceiveShadowsField,
+                    SdfxLanguage.ShaderGui.ReceiveShadowsTooltip),
+                receiveShadows);
+
+            forwardAddPass = EditorGUILayout.ToggleLeft(
+                new GUIContent(
+                    SdfxLanguage.ShaderGui.ForwardAddPassField,
+                    SdfxLanguage.ShaderGui.ForwardAddPassTooltip),
+                forwardAddPass);
 
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
@@ -170,11 +188,13 @@ namespace SDFX.VectorTextureCompiler.Editor
             var ids = selected.Where(kv => kv.Value).Select(kv => kv.Key).ToList();
             var mat = material;
             var asset = compiledAsset;
+            var shadows = receiveShadows;
+            var forwardAdd = forwardAddPass;
             Close();
 
             EditorApplication.delayCall += () =>
             {
-                if (SdfxCompilerActions.TryRegenerateShaderOnly(mat, asset, ids, out var message))
+                if (SdfxCompilerActions.TryRegenerateShaderOnly(mat, asset, ids, shadows, forwardAdd, out var message))
                 {
                     Debug.Log(message);
                 }
