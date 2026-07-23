@@ -58,7 +58,6 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
             var cells = new SpatialGridCell[totalCells];
             var indices = new List<int>(Math.Max(primitives.Count * 2, totalCells));
             var buckets = new List<int>[totalCells];
-            var areas = new float[primitives.Count];
 
             // Grid domain is fixed [0,1] UV; shader samples lookup with raw fragment UV.
             var domainMin = Vector2.zero;
@@ -67,8 +66,11 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
 
             for (var primitiveIndex = 0; primitiveIndex < primitives.Count; primitiveIndex++)
             {
-                var bounds = GetBounds(primitives[primitiveIndex]);
-                areas[primitiveIndex] = (bounds.max.x - bounds.min.x) * (bounds.max.y - bounds.min.y);
+                var bounds = PrimitiveBounds.GetAabb(primitives[primitiveIndex], expandDegenerateAxes: true);
+                if (!PrimitiveBounds.IntersectsUnitCanvas(bounds))
+                {
+                    continue;
+                }
 
                 var xMin = Mathf.Clamp((int)Mathf.Floor((bounds.min.x - domainMin.x) / domainWidth * width), 0, width - 1);
                 var yMin = Mathf.Clamp((int)Mathf.Floor((bounds.min.y - domainMin.y) / domainHeight * height), 0, height - 1);
@@ -118,17 +120,16 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
                     continue;
                 }
 
+                // Primitive array is painter's order (low index = bottom, high = top).
+                // Shader composites front-to-back and expects topmost-first, so sort
+                // descending. When over capacity, keep topmost and drop buried layers.
+                bucket.Sort((a, b) => b.CompareTo(a));
+
                 var keptCount = Mathf.Min(maxPerCell, bucket.Count);
                 var dropCount = bucket.Count - keptCount;
                 if (dropCount > 0)
                 {
-                    bucket.Sort((a, b) =>
-                    {
-                        var byArea = areas[b].CompareTo(areas[a]);
-                        return byArea != 0 ? byArea : a.CompareTo(b);
-                    });
                     bucket.RemoveRange(keptCount, dropCount);
-                    bucket.Sort();
                     droppedReferences += dropCount;
                 }
 
@@ -141,26 +142,6 @@ namespace SDFX.VectorTextureCompiler.Core.Optimize
             }
 
             return new SpatialGrid(width, height, cells, indices.ToArray(), droppedReferences);
-        }
-
-        private static (Vector2 min, Vector2 max) GetBounds(Primitive primitive)
-        {
-            var p0 = primitive.Position;
-            var p1 = primitive.Position + primitive.Size;
-            var min = Vector2.Min(p0, p1);
-            var max = Vector2.Max(p0, p1);
-
-            if (Mathf.Approximately(min.x, max.x))
-            {
-                max.x += 0.0001f;
-            }
-
-            if (Mathf.Approximately(min.y, max.y))
-            {
-                max.y += 0.0001f;
-            }
-
-            return (min, max);
         }
     }
 }

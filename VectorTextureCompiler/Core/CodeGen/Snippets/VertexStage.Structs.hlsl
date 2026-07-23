@@ -15,6 +15,9 @@ struct v2f
     float3 worldNormal : TEXCOORD2;
     float3 worldPos : TEXCOORD3;
     float4 vertexColor : COLOR;
+#if defined(SDFX_VERTEX_POINT_LIGHTS)
+    float3 vertexLighting : TEXCOORD5;
+#endif
     {{SHADOW_RECEIVE_COORDS}}
     UNITY_VERTEX_OUTPUT_STEREO
 };

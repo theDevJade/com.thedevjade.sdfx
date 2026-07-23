@@ -39,6 +39,14 @@ namespace SDFX.VectorTextureCompiler.Core.CodeGen
         /// </summary>
         public bool EnableShadowReceiving { get; set; }
 
+        public bool HasBakedSdfAtlas { get; set; }
+
+        public float BakedSdfPxRange { get; set; } = 8f;
+
+        public bool HardEdgeCoverage { get; set; }
+
+        public bool EnableVertexPointLights { get; set; }
+
         /// <summary>
         /// Effective shadow-receiving state.
         /// </summary>
@@ -163,6 +171,18 @@ _BackgroundColor (""Background"", Color) = {bgDefault}
 [NoScaleOffset] _GridLookupTex (""Grid Lookup"", 2D) = ""black"" {{}}
 [NoScaleOffset] _GridIndexTex (""Grid Index List"", 2D) = ""black"" {{}}
 [NoScaleOffset] _PathDataTex (""Path Edge Data"", 2D) = ""black"" {{}}
+", PropertyIndent);
+
+            if (request.HasBakedSdfAtlas)
+            {
+                AppendBlock(sb, @"
+[NoScaleOffset] _BakedSdfAtlas (""Baked Path SDF Atlas"", 2D) = ""black"" {}
+[NoScaleOffset] _BakedSdfMeta (""Baked Path SDF Meta"", 2D) = ""black"" {}
+_BakedSdfPxRange (""Baked SDF Px Range"", Float) = 8
+", PropertyIndent);
+            }
+
+            AppendBlock(sb, $@"
 [Enum(UnityEngine.Rendering.CullMode)] _Cull (""Cull Mode"", Float) = 2
 ", PropertyIndent);
 
@@ -171,6 +191,7 @@ _BlendMode (""Blend Mode"", Float) = {(int)blend}
 [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest (""ZTest"", Float) = 4
 [Toggle] _AlphaClip (""Alpha Clip"", Float) = 0
 _AlphaClipThreshold (""Alpha Clip Threshold"", Range(0, 1)) = 0.5
+[Toggle] _HardEdgeCoverage (""Hard Edge Coverage"", Float) = {(request.HardEdgeCoverage ? 1 : 0)}
 _DepthOffset (""Depth Offset Factor"", Float) = 0
 _DepthOffsetUnits (""Depth Offset Units"", Float) = 0
 [Enum(Background,0,Geometry,1,AlphaTest,2,Transparent,3,Overlay,4)] _RenderQueuePreset (""Render Queue"", Float) = 1
@@ -394,6 +415,10 @@ fixed4 fragAdd (v2fAdd i) : SV_Target
             {
                 sb.AppendLine("            #pragma multi_compile_fwdbase nolightmap nodynlightmap nodirlightmap novertexlight");
             }
+            else if (request.EnableVertexPointLights)
+            {
+                sb.AppendLine("            #pragma multi_compile_fwdbase nolightmap nodynlightmap nodirlightmap");
+            }
 
             sb.AppendLine("            #pragma shader_feature_local _SDFX_PRECISION_HALF");
             foreach (var module in modules)
@@ -450,6 +475,16 @@ fixed4 fragAdd (v2fAdd i) : SV_Target
                 sb.AppendLine($"{PassIndent}#define SDFX_GRID_UNROLL");
             }
 
+            if (request.HasBakedSdfAtlas)
+            {
+                sb.AppendLine($"{PassIndent}#define SDFX_HAS_BAKED_SDF");
+            }
+
+            if (request.EnableVertexPointLights)
+            {
+                sb.AppendLine($"{PassIndent}#define SDFX_VERTEX_POINT_LIGHTS");
+            }
+
             EmitFlatTextureDefines(sb, request.FlatTextures);
 
             AppendBlock(sb, ShaderSnippets.SdfFunctionTypeDefines, PassIndent);
@@ -488,12 +523,20 @@ sampler2D _GridIndexTex;
 float4 _GridIndexTex_TexelSize;
 sampler2D _PathDataTex;
 float4 _PathDataTex_TexelSize;
+#if defined(SDFX_HAS_BAKED_SDF)
+sampler2D _BakedSdfAtlas;
+float4 _BakedSdfAtlas_TexelSize;
+sampler2D _BakedSdfMeta;
+float4 _BakedSdfMeta_TexelSize;
+float _BakedSdfPxRange;
+#endif
 float4 _Color;
 float4 _BackgroundColor;
 float _BlendMode;
 float _ZTest;
 float _AlphaClip;
 float _AlphaClipThreshold;
+float _HardEdgeCoverage;
 float _DepthOffset;
 float _DepthOffsetUnits;
 float _RenderQueuePreset;
@@ -639,7 +682,7 @@ sampler2D _SdfxGrabTex;
 float sdfDist;
 fixed4 art = SdfxEvaluate(uv, sdfDist);
 
-
+fixed4 col;
 col.a   = art.a + _BackgroundColor.a * (1.0 - art.a);
 col.rgb = art.rgb + _BackgroundColor.rgb * _BackgroundColor.a * (1.0 - art.a);
 col.rgb /= max(col.a, 1e-4);
@@ -654,6 +697,10 @@ col.rgb = SdfxApplyBaseColorGrading(col.rgb, i.vertexColor, _UseVertexColor, _Ve
             sb.AppendLine($"{bodyIndent}float camDist = distance(_WorldSpaceCameraPos, i.worldPos);");
             sb.AppendLine($"{bodyIndent}float sdfxFade = saturate(1.0 - (camDist - 8.0) * _SdfxDistanceFade * 0.02);");
             sb.AppendLine($"{bodyIndent}SdfxSignals sdfxSignals = SdfxComputeSignals(uv, i.worldPos, worldNormal, viewDir, sdfDist);");
+            if (request.EnableVertexPointLights)
+            {
+                sb.AppendLine($"{bodyIndent}sdfxSignals.ambient += i.vertexLighting;");
+            }
             if (request.ReceivesShadows)
             {
                 sb.AppendLine($"{bodyIndent}fixed sdfxShadowAtten = SHADOW_ATTENUATION(i);");

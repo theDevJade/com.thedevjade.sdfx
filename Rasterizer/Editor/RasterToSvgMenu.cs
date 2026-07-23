@@ -10,6 +10,11 @@ namespace SDFX.Rasterizer.Editor
         [MenuItem(SdfxLanguage.Menu.AutoConvertToSvg, false, 1999)]
         private static void AutoConvertSelected()
         {
+            if (!NativeDllConsent.EnsureAccepted())
+            {
+                return;
+            }
+
             var textures = Selection.GetFiltered<Texture2D>(SelectionMode.Assets);
             if (textures == null || textures.Length == 0)
             {
@@ -20,6 +25,7 @@ namespace SDFX.Rasterizer.Editor
                 return;
             }
 
+            var options = new RasterParsingOptions();
             var converted = 0;
             var failed = 0;
             Object lastSvg = null;
@@ -36,22 +42,15 @@ namespace SDFX.Rasterizer.Editor
 
                     EditorUtility.DisplayProgressBar(
                         SdfxLanguage.Rasterizer.WindowTitle,
-                        SdfxLanguage.Rasterizer.ProgressAnalyzing(texture.name, i + 1, textures.Length),
-                        i / (float)textures.Length);
-
-                    var recommendation = RasterAutoAlgorithmSelector.Analyze(texture);
-
-                    EditorUtility.DisplayProgressBar(
-                        SdfxLanguage.Rasterizer.WindowTitle,
                         SdfxLanguage.Rasterizer.ProgressConverting(
                             texture.name,
-                            RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
+                            SdfxLanguage.Rasterizer.EngineName,
                             i + 1,
                             textures.Length),
-                        (i + 0.5f) / textures.Length);
+                        i / (float)textures.Length);
 
                     var svgPath = Path.ChangeExtension(assetPath, ".svg");
-                    var result = RasterToSvg.ExportToFile(texture, svgPath, recommendation.Options);
+                    var result = RasterToSvg.ExportToFile(texture, svgPath, options);
                     RasterToSvg.DestroyPreview(result);
 
                     if (result.Success)
@@ -63,18 +62,21 @@ namespace SDFX.Rasterizer.Editor
                                 assetPath,
                                 svgPath,
                                 result.PathCount,
-                                RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
-                                recommendation.Reason),
+                                SdfxLanguage.Rasterizer.EngineName,
+                                SdfxLanguage.Rasterizer.AutoConvertDefaultReason),
                             lastSvg);
                     }
                     else
                     {
                         failed++;
+                        var detail = result.Issues.Count > 0
+                            ? result.Issues[0].Message
+                            : SdfxLanguage.Rasterizer.AutoConvertDefaultReason;
                         Debug.LogError(
                             SdfxLanguage.Rasterizer.AutoConvertFailedLog(
                                 assetPath,
-                                RasterAlgorithmMetadata.Get(recommendation.Algorithm).Name,
-                                recommendation.Reason),
+                                SdfxLanguage.Rasterizer.EngineName,
+                                detail),
                             texture);
                     }
                 }

@@ -16,3 +16,8 @@ float3 SdfxAmbient(float3 normal)
 {
     return ShadeSH9(half4(normal, 1.0));
 }
+
+float3 SdfxAmbientL0()
+{
+    return float3(unity_SHAr.w, unity_SHAg.w, unity_SHAb.w);
+}

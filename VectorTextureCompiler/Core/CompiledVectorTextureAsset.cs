@@ -13,6 +13,8 @@ namespace SDFX.VectorTextureCompiler.Core
         public Texture2D gridLookupTexture;
         public Texture2D gridIndexTexture;
         public Texture2D pathDataTexture;
+        public Texture2D bakedSdfAtlas;
+        public Texture2D bakedSdfMeta;
         public Material material;
         public CompileReport compileReport = new CompileReport();
     }

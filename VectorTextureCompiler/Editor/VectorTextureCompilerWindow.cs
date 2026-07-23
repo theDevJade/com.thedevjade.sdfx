@@ -47,6 +47,7 @@ namespace SDFX.VectorTextureCompiler.Editor
         private bool compileOptionsFoldout;
         private bool enableForwardAddPass;
         private bool enableShadowReceiving;
+        private bool aggressiveOcclusionClipping;
         private bool decalLayersFoldout;
         private readonly List<DecalCompositor.DecalLayer> decalLayers = new List<DecalCompositor.DecalLayer>();
 
@@ -177,12 +178,22 @@ namespace SDFX.VectorTextureCompiler.Editor
 
                 parserStrictness = (ParserStrictness)EditorGUILayout.EnumPopup(SdfxLanguage.EditorWindow.ParserStrictnessField, parserStrictness);
                 coordinateModel = (CoordinateModel)EditorGUILayout.EnumPopup(SdfxLanguage.EditorWindow.CoordinateModelField, coordinateModel);
-                enableForwardAddPass = EditorGUILayout.Toggle(
-                    SdfxLanguage.EditorWindow.EnableForwardAddPassField,
-                    enableForwardAddPass);
-                if (enableForwardAddPass)
+                if (optimizationProfile == OptimizationProfile.Quest)
                 {
-                    EditorGUILayout.HelpBox(SdfxLanguage.EditorWindow.EnableForwardAddPassHelp, MessageType.Info);
+                    EditorGUI.BeginDisabledGroup(true);
+                    EditorGUILayout.Toggle(SdfxLanguage.EditorWindow.EnableForwardAddPassField, false);
+                    EditorGUI.EndDisabledGroup();
+                    EditorGUILayout.HelpBox(SdfxLanguage.EditorWindow.EnableForwardAddPassQuestHelp, MessageType.Info);
+                }
+                else
+                {
+                    enableForwardAddPass = EditorGUILayout.Toggle(
+                        SdfxLanguage.EditorWindow.EnableForwardAddPassField,
+                        enableForwardAddPass);
+                    if (enableForwardAddPass)
+                    {
+                        EditorGUILayout.HelpBox(SdfxLanguage.EditorWindow.EnableForwardAddPassHelp, MessageType.Info);
+                    }
                 }
 
                 enableShadowReceiving = EditorGUILayout.Toggle(
@@ -195,6 +206,16 @@ namespace SDFX.VectorTextureCompiler.Editor
                             ? SdfxLanguage.EditorWindow.EnableShadowReceivingQuestHelp
                             : SdfxLanguage.EditorWindow.EnableShadowReceivingHelp,
                         optimizationProfile == OptimizationProfile.Quest ? MessageType.Warning : MessageType.Info);
+                }
+
+                aggressiveOcclusionClipping = EditorGUILayout.Toggle(
+                    SdfxLanguage.EditorWindow.AggressiveOcclusionClippingField,
+                    aggressiveOcclusionClipping);
+                if (aggressiveOcclusionClipping)
+                {
+                    EditorGUILayout.HelpBox(
+                        SdfxLanguage.EditorWindow.AggressiveOcclusionClippingHelp,
+                        MessageType.Warning);
                 }
             }
         }
@@ -618,6 +639,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             SetSetting("compileBlendMode", compileBlendMode.ToString());
             SetSetting("enableForwardAddPass", enableForwardAddPass.ToString());
             SetSetting("enableShadowReceiving", enableShadowReceiving.ToString());
+            SetSetting("aggressiveOcclusionClipping", aggressiveOcclusionClipping.ToString());
 
             var disabledModules = ShaderModuleRegistry.All
                 .Where(m => !IsModuleSelected(m.Id))
@@ -655,6 +677,7 @@ namespace SDFX.VectorTextureCompiler.Editor
             compileBlendMode = Mathf.Max(0, GetSettingInt("compileBlendMode", compileBlendMode));
             enableForwardAddPass = GetSettingBool("enableForwardAddPass", enableForwardAddPass);
             enableShadowReceiving = GetSettingBool("enableShadowReceiving", enableShadowReceiving);
+            aggressiveOcclusionClipping = GetSettingBool("aggressiveOcclusionClipping", aggressiveOcclusionClipping);
 
             moduleSelection.Clear();
             var disabledCsv = GetSettingString("disabledModules", string.Empty);
@@ -746,6 +769,7 @@ namespace SDFX.VectorTextureCompiler.Editor
                     : (BlendModePreset?)(compileBlendMode - 1),
                 EnableForwardAddPass = enableForwardAddPass,
                 EnableShadowReceiving = enableShadowReceiving,
+                AggressiveOcclusionClipping = aggressiveOcclusionClipping,
                 DecalLayers = decalLayers.Count > 0 ? new List<DecalCompositor.DecalLayer>(decalLayers) : null
             };
         }

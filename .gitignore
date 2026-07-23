@@ -29,6 +29,10 @@ Desktop.ini
 *.log
 *.tmp
 *~
+!Rasterizer/RasterizerSource~/
+!Rasterizer/RasterizerSource~/**
+!Rasterizer/Native~/
+!Rasterizer/Native~/**
 *.csx
 _tmp*
 _comments_inventory.txt

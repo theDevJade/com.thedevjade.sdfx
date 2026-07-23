@@ -1,0 +1,5 @@
+# Keep prebuilt runtime DLLs; ignore debug/symbol sidecars from local builds.
+*.pdb
+*.exp
+*.lib
+*.ilk

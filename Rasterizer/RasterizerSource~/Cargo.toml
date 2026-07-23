@@ -1,0 +1,27 @@
+[package]
+name = "sdfx-rasterizer"
+version = "0.1.0"
+edition = "2021"
+description = "VTracer vectorizer for SDFX"
+
+[lib]
+name = "sdfx_rasterizer"
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "rust-vectorizer"
+path = "src/main.rs"
+
+[dependencies]
+vtracer = "0.6.5"
+visioncortex = "0.8.10"
+resvg = "0.47.0"
+image = "0.25.10"
+flo_curves = "0.8.0"
+svgtypes = "0.16.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

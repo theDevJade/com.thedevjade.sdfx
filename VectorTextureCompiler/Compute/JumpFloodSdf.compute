@@ -1,0 +1,90 @@
+#pragma kernel SeedBoundary
+#pragma kernel JumpFlood
+#pragma kernel ComposeSigned
+
+RWTexture2D<float> _MaskTex;
+RWTexture2D<float2> _SeedTex;
+RWTexture2D<float2> _SeedTexOut;
+RWTexture2D<float> _SdfTex;
+
+uint _Width;
+uint _Height;
+int _Step;
+float _PixelSizeUv;
+
+[numthreads(8, 8, 1)]
+void SeedBoundary(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    float inside = _MaskTex[id.xy];
+    bool boundary = false;
+    if (id.x > 0 && _MaskTex[uint2(id.x - 1, id.y)] != inside) boundary = true;
+    if (id.x + 1 < _Width && _MaskTex[uint2(id.x + 1, id.y)] != inside) boundary = true;
+    if (id.y > 0 && _MaskTex[uint2(id.x, id.y - 1)] != inside) boundary = true;
+    if (id.y + 1 < _Height && _MaskTex[uint2(id.x, id.y + 1)] != inside) boundary = true;
+
+    _SeedTex[id.xy] = boundary ? float2(id.xy) : float2(-1.0, -1.0);
+}
+
+[numthreads(8, 8, 1)]
+void JumpFlood(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    float2 best = _SeedTex[id.xy];
+    float bestDist = (best.x < 0.0) ? 1e20 : dot(best - float2(id.xy), best - float2(id.xy));
+
+    int2 offsets[8] = {
+        int2(-_Step, -_Step), int2(0, -_Step), int2(_Step, -_Step),
+        int2(-_Step, 0),                       int2(_Step, 0),
+        int2(-_Step, _Step),  int2(0, _Step),  int2(_Step, _Step)
+    };
+
+    [unroll]
+    for (int i = 0; i < 8; i++)
+    {
+        int2 n = int2(id.xy) + offsets[i];
+        if (n.x < 0 || n.y < 0 || n.x >= (int)_Width || n.y >= (int)_Height)
+        {
+            continue;
+        }
+
+        float2 candidate = _SeedTex[n];
+        if (candidate.x < 0.0)
+        {
+            continue;
+        }
+
+        float2 d = candidate - float2(id.xy);
+        float dist = dot(d, d);
+        if (dist < bestDist)
+        {
+            bestDist = dist;
+            best = candidate;
+        }
+    }
+
+    _SeedTexOut[id.xy] = best;
+}
+
+[numthreads(8, 8, 1)]
+void ComposeSigned(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    float2 seed = _SeedTex[id.xy];
+    float distPx = (seed.x < 0.0) ? 0.0 : length(seed - float2(id.xy));
+    float inside = _MaskTex[id.xy];
+    float signedUv = (inside > 0.5 ? -distPx : distPx) * _PixelSizeUv;
+    _SdfTex[id.xy] = signedUv;
+}

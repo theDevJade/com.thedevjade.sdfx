@@ -23,9 +23,9 @@ if (mode == 5) {
     float cols = max(_UvFlipbookCols, 1.0);
     float rows = max(_UvFlipbookRows, 1.0);
     float frame = floor(_Time.y * _UvFlipbookSpeed);
-    float col = fmod(frame, cols);
-    float row = floor(frame / cols);
-    uv = frac(uv) / float2(cols, rows) + float2(col, row) / float2(cols, rows);
+    float flipCol = fmod(frame, cols);
+    float flipRow = floor(frame / cols);
+    uv = frac(uv) / float2(cols, rows) + float2(flipCol, flipRow) / float2(cols, rows);
 }
 if (mode == 6) {
     uv = i.worldPos.xy * _UvScaleOffset.xy + _UvScaleOffset.zw;

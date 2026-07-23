@@ -7,27 +7,23 @@ namespace SDFX.VectorTextureCompiler.Tests.Raster
     public sealed class RasterVectorizerTests
     {
         [Test]
-        public void Registry_ResolvesAllAlgorithms()
-        {
-            foreach (RasterVectorizationAlgorithm algorithm in System.Enum.GetValues(typeof(RasterVectorizationAlgorithm)))
-            {
-                Assert.IsNotNull(RasterAlgorithmMetadata.Get(algorithm).Name);
-            }
-        }
-
-        [Test]
-        public void RasterToSvg_ColorQuant_ProducesSvg()
+        public void RasterToSvg_DefaultOptions_ProducesSvg()
         {
             var texture = CreateTwoToneShapeTexture(32, 32);
             var options = new RasterParsingOptions
             {
-                Algorithm = RasterVectorizationAlgorithm.ColorQuantMarchingSquares,
-                UseComputeAcceleration = false,
-                ColorQuant = { ColorCount = 4, MinRegionArea = 4 }
+                MinSimilarity = 0,
+                SimplifyTolerance = 2.0
             };
 
             var result = RasterToSvg.Export(texture, options);
-            Assert.IsFalse(string.IsNullOrEmpty(result.SvgText));
+            if (!result.Success && result.Issues.Count > 0
+                && result.Issues[0].Code == RasterIssueCode.NativeUnavailable)
+            {
+                Assert.Ignore(result.Issues[0].Message);
+            }
+
+            Assert.IsTrue(result.Success, result.Issues.Count > 0 ? result.Issues[0].Message : "export failed");
             Assert.IsTrue(result.SvgText.Contains("<svg"));
             Assert.Greater(result.PathCount, 0);
             RasterToSvg.DestroyPreview(result);
@@ -35,52 +31,24 @@ namespace SDFX.VectorTextureCompiler.Tests.Raster
         }
 
         [Test]
-        public void MigrateTracingMode_MapsLegacyModes()
-        {
-            Assert.AreEqual(
-                RasterVectorizationAlgorithm.GradientEdgeVectorization,
-                RasterParsingOptions.MigrateTracingMode(RasterTracingMode.Edges));
-            Assert.AreEqual(
-                RasterVectorizationAlgorithm.SuzukiAbeContours,
-                RasterParsingOptions.MigrateTracingMode(RasterTracingMode.Contours));
-            Assert.AreEqual(
-                RasterVectorizationAlgorithm.SuzukiAbeContours,
-                RasterParsingOptions.MigrateTracingMode(RasterTracingMode.Strokes));
-        }
-
-        [Test]
-        public void RasterToSvg_SuzukiAbe_ProducesSvgFromAlphaMask()
+        public void RasterToSvg_BinaryMode_ProducesSvgFromAlphaMask()
         {
             var texture = CreateAlphaMaskTexture(32, 32);
             var options = new RasterParsingOptions
             {
-                Algorithm = RasterVectorizationAlgorithm.SuzukiAbeContours,
-                UseComputeAcceleration = false,
-                Contour = { ThresholdMode = RasterThresholdMode.Alpha, TraceHoles = true }
+                ColorMode = RasterColorMode.Binary,
+                MinSimilarity = 0,
+                SimplifyTolerance = 2.0
             };
 
             var result = RasterToSvg.Export(texture, options);
-            Assert.IsTrue(result.Success);
-            Assert.IsTrue(result.SvgText.Contains("<svg"));
-            Assert.Greater(result.PathCount, 0);
-            RasterToSvg.DestroyPreview(result);
-            Object.DestroyImmediate(texture);
-        }
-
-        [Test]
-        public void RasterToSvg_HybridContour_ProducesSvg()
-        {
-            var texture = CreateTwoToneShapeTexture(24, 24);
-            var options = new RasterParsingOptions
+            if (!result.Success && result.Issues.Count > 0
+                && result.Issues[0].Code == RasterIssueCode.NativeUnavailable)
             {
-                Algorithm = RasterVectorizationAlgorithm.HybridSegmentContourBezierSdf,
-                UseComputeAcceleration = false,
-                ColorQuant = { ColorCount = 4, MinRegionArea = 4 },
-                Hybrid = { MinRegionArea = 4 }
-            };
+                Assert.Ignore(result.Issues[0].Message);
+            }
 
-            var result = RasterToSvg.Export(texture, options);
-            Assert.IsFalse(string.IsNullOrEmpty(result.SvgText));
+            Assert.IsTrue(result.Success, result.Issues.Count > 0 ? result.Issues[0].Message : "export failed");
             Assert.IsTrue(result.SvgText.Contains("<svg"));
             Assert.Greater(result.PathCount, 0);
             RasterToSvg.DestroyPreview(result);

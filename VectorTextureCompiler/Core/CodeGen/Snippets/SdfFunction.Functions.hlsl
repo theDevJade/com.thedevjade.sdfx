@@ -100,8 +100,33 @@ bool SdfxPathOutsideAabb(float2 uv, float2 pos, float2 size)
     return dot(outside, outside) > 0.0;
 }
 
+#if defined(SDFX_HAS_BAKED_SDF)
+float SdfxSampleBakedSdf(SdfxPrimitive p, float2 uv)
+{
+    float4 rect = tex2Dlod(_BakedSdfMeta, float4((float(p.pathStart) + 0.5) * _BakedSdfMeta_TexelSize.x, 0.5, 0, 0));
+    float2 local = (uv - p.pos) / max(p.size, 1e-6);
+    float2 atlasUv = lerp(rect.xy, rect.zw, saturate(local));
+    // Atlas stores UV-space signed distance directly.
+    return tex2Dlod(_BakedSdfAtlas, float4(atlasUv, 0, 0)).r;
+}
+#endif
+
 float SdfxEvalPrimitive(SdfxPrimitive p, float2 uv)
 {
+    if ((p.type == SDFX_TYPE_POLYGON || p.type == SDFX_TYPE_POLYLINE) && p.pathCount < 0)
+    {
+        if (SdfxPathOutsideAabb(uv, p.pos, p.size))
+        {
+            return SDFX_PATH_SKIP_DIST;
+        }
+
+#if defined(SDFX_HAS_BAKED_SDF)
+        return SdfxSampleBakedSdf(p, uv);
+#else
+        return SDFX_PATH_SKIP_DIST;
+#endif
+    }
+
     if (p.type == SDFX_TYPE_POLYGON && p.pathCount > 0)
     {
         if (SdfxPathOutsideAabb(uv, p.pos, p.size))

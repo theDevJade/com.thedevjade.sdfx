@@ -76,7 +76,8 @@ SdfxPrimitive SdfxFetchPrimitive(int primIdx)
     p.softness     = t2.g;
     p.rotation     = t2.b * 6.28318530718;
     p.pathStart    = (int)(t3.r + 0.5);
-    p.pathCount    = (int)(t3.g + 0.5);
+    // Negative pathCount marks a baked path SDF (do not round toward zero via +0.5).
+    p.pathCount    = (int)floor(t3.g + (t3.g < 0.0 ? 0.0 : 0.5));
     p.strokeRadius = t3.b;
     p.gradStart    = (int)(t3.a + 0.5) - 1;
     return p;

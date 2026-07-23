@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.IO;
+using SDFX.Rasterizer.Editor;
 using UnityEditor;
 using UnityEngine;
 
@@ -9,10 +11,72 @@ namespace SDFX.Rasterizer
         public static RasterToSvgResult Export(Texture2D source, RasterParsingOptions options = null)
         {
             options ??= new RasterParsingOptions();
-            options.Algorithm = ResolveAlgorithm(options);
-            var work = RasterVectorizerRegistry.Resolve(options.Algorithm).Build(source, options);
-            var success = !HasErrors(work.Issues) && !string.IsNullOrEmpty(work.SvgText) && work.PathCount > 0;
-            return new RasterToSvgResult(success, work.SvgText, string.Empty, work.OverlayPreview, work.Issues, work.PathCount);
+            var issues = new List<RasterIssue>();
+
+            if (!NativeDllConsent.EnsureAccepted())
+            {
+                issues.Add(new RasterIssue(
+                    RasterIssueSeverity.Error,
+                    "Native DLL was not accepted or failed to load.",
+                    code: RasterIssueCode.NativeUnavailable));
+                return new RasterToSvgResult(false, string.Empty, string.Empty, null, issues, 0);
+            }
+
+            if (source == null)
+            {
+                issues.Add(new RasterIssue(
+                    RasterIssueSeverity.Error,
+                    "Raster source is missing.",
+                    code: RasterIssueCode.InvalidInput));
+                return new RasterToSvgResult(false, string.Empty, string.Empty, null, issues, 0);
+            }
+
+            var readable = NativeVtracer.EnsureReadable(source);
+            if (readable == null)
+            {
+                issues.Add(new RasterIssue(
+                    RasterIssueSeverity.Error,
+                    "Failed to read raster pixel data.",
+                    code: RasterIssueCode.InvalidInput));
+                return new RasterToSvgResult(false, string.Empty, string.Empty, null, issues, 0);
+            }
+
+            try
+            {
+                var pixels = readable.GetPixels32();
+                var native = options.ToNative();
+                if (!NativeVtracer.TryVectorize(
+                        pixels,
+                        readable.width,
+                        readable.height,
+                        native,
+                        out var svg,
+                        out var pathCount,
+                        out var error))
+                {
+                    var code = !string.IsNullOrEmpty(error)
+                               && error.IndexOf("dll not found", System.StringComparison.OrdinalIgnoreCase) >= 0
+                        ? RasterIssueCode.NativeUnavailable
+                        : RasterIssueCode.NativeFailed;
+                    issues.Add(new RasterIssue(RasterIssueSeverity.Error, error, code: code));
+                    return new RasterToSvgResult(false, string.Empty, string.Empty, null, issues, 0);
+                }
+
+                var success = !string.IsNullOrEmpty(svg) && pathCount > 0;
+                if (!success)
+                {
+                    issues.Add(new RasterIssue(
+                        RasterIssueSeverity.Error,
+                        "Vectorize produced no paths.",
+                        code: RasterIssueCode.NativeFailed));
+                }
+
+                return new RasterToSvgResult(success, svg, string.Empty, null, issues, pathCount);
+            }
+            finally
+            {
+                NativeVtracer.CleanupReadableCopy(readable, source);
+            }
         }
 
         public static RasterToSvgResult ExportToFile(
@@ -53,37 +117,6 @@ namespace SDFX.Rasterizer
             {
                 Object.DestroyImmediate(result.OverlayPreview);
             }
-        }
-
-        private static bool HasErrors(System.Collections.Generic.List<RasterIssue> issues)
-        {
-            if (issues == null)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < issues.Count; i++)
-            {
-                if (issues[i].Severity == RasterIssueSeverity.Error)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private static RasterVectorizationAlgorithm ResolveAlgorithm(RasterParsingOptions rasterOptions)
-        {
-#pragma warning disable CS0618
-            if (rasterOptions.TracingMode != RasterTracingMode.Edges &&
-                rasterOptions.Algorithm == RasterVectorizationAlgorithm.GradientEdgeVectorization)
-            {
-                return RasterParsingOptions.MigrateTracingMode(rasterOptions.TracingMode);
-            }
-#pragma warning restore CS0618
-
-            return rasterOptions.Algorithm;
         }
     }
 }

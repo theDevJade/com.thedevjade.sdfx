@@ -1,0 +1,7 @@
+Clipper2 (C# port)
+Copyright Angus Johnson 2010-2025
+https://www.angusj.com
+https://github.com/AngusJohnson/Clipper2
+
+License: Boost Software License 1.0
+https://www.boost.org/LICENSE_1_0.txt

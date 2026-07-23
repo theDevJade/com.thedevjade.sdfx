@@ -1,0 +1,11 @@
+# Cargo build output
+/target/
+
+/input/
+/output/
+
+.vscode/
+package-lock.json
+*.pdb
+*.exe
+*.dll

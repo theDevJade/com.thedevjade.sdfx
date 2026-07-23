@@ -178,6 +178,19 @@ namespace SDFX.VectorTextureCompiler.Editor
             var hasTransparency = blend != BlendModePreset.Opaque && blend != BlendModePreset.Cutout;
             var profile = ParseEnum(compiledAsset.compileReport?.optimizationProfile, OptimizationProfile.Pc);
             var maxPerCell = ReadMaxPrimitivesPerCell(shaderAssetPath, profile == OptimizationProfile.Quest ? 8 : 32);
+            var hasBaked = compiledAsset.bakedSdfAtlas != null;
+
+            if (profile == OptimizationProfile.Quest)
+            {
+                var withoutGrab = resolvedModules
+                    .Where(m => !string.Equals(m.Id, "grabpass", StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+                if (withoutGrab.Count != resolvedModules.Count)
+                {
+                    Debug.LogWarning(SdfxLanguage.Compiler.GrabPassQuestBlocked);
+                    resolvedModules = withoutGrab;
+                }
+            }
 
             var request = new ShaderGenerationRequest
             {
@@ -190,7 +203,10 @@ namespace SDFX.VectorTextureCompiler.Editor
                 OptimizationProfile = profile,
                 FlatTextures = FlatTextureLayout.FromTextures(prim, gridIndex, path),
                 EnableShadowReceiving = enableShadowReceiving,
-                EnableForwardAddPass = enableForwardAddPass
+                EnableForwardAddPass = profile != OptimizationProfile.Quest && enableForwardAddPass,
+                HasBakedSdfAtlas = hasBaked,
+                HardEdgeCoverage = false,
+                EnableVertexPointLights = profile == OptimizationProfile.Quest
             };
 
             var projectRoot = Directory.GetParent(Application.dataPath);
@@ -251,6 +267,19 @@ namespace SDFX.VectorTextureCompiler.Editor
 
             material.shader = imported;
             SyncModuleKeywords(material, resolvedModules);
+            if (hasBaked)
+            {
+                if (material.HasProperty("_BakedSdfAtlas") && compiledAsset.bakedSdfAtlas != null)
+                {
+                    material.SetTexture("_BakedSdfAtlas", compiledAsset.bakedSdfAtlas);
+                }
+
+                if (material.HasProperty("_BakedSdfMeta") && compiledAsset.bakedSdfMeta != null)
+                {
+                    material.SetTexture("_BakedSdfMeta", compiledAsset.bakedSdfMeta);
+                }
+            }
+
             EditorUtility.SetDirty(material);
             AssetDatabase.SaveAssets();
 

@@ -77,6 +77,8 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
         public bool EnableShadowReceiving { get; set; }
 
         public List<DecalCompositor.DecalLayer> DecalLayers { get; set; }
+
+        public bool AggressiveOcclusionClipping { get; set; }
     }
 
     public readonly struct CompileResult
@@ -173,7 +175,15 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             simplifyWatch.Stop();
 
             var booleanWatch = Stopwatch.StartNew();
-            var resolved = BooleanResolver.Resolve(simplified);
+            var resolved = BooleanResolver.Resolve(simplified, parseResult.PathEdges);
+            var pathEdges = new List<Vector4>(parseResult.PathEdges);
+            if (options.AggressiveOcclusionClipping)
+            {
+                var clipResult = OcclusionPathClipper.Apply(resolved, pathEdges);
+                resolved = clipResult.Primitives;
+                pathEdges = clipResult.PathEdges;
+            }
+
             booleanWatch.Stop();
 
             var quantizeWatch = Stopwatch.StartNew();
@@ -191,18 +201,60 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 Debug.Log(SdfxLanguage.Compiler.QuestVariantStage(questWatch.ElapsedMilliseconds, primitiveArray.Length));
             }
 
+            var isQuest = options.OptimizationProfile == OptimizationProfile.Quest;
+            var enableForwardAdd = !isQuest && options.EnableForwardAddPass;
+            var hardEdgeCoverage = false;
+            var enableVertexPointLights = isQuest;
+
+            var pathSdfBake = PathSdfBaker.Bake(primitiveArray, pathEdges);
+            var hasBakedSdf = pathSdfBake.BakedCount > 0;
+
+            primitiveArray = CanvasDomainCuller.Cull(primitiveArray);
+
             var gridWatch = Stopwatch.StartNew();
-            var maxPerCellCap = options.OptimizationProfile == OptimizationProfile.Quest ? 8 : 64;
+            var maxPerCellCap = isQuest ? 8 : 64;
             var maxPerCell = Mathf.Clamp(options.MaxPrimitivesPerCell, 1, maxPerCellCap);
+            var gridResCap = isQuest ? 64 : 128;
+            var gridWidth = Mathf.Clamp(options.GridWidth, 32, gridResCap);
+            var gridHeight = Mathf.Clamp(options.GridHeight, 32, gridResCap);
+            var targetGrid = Mathf.Clamp(
+                Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(primitiveArray.Length, 1)) * 2f),
+                32,
+                gridResCap);
+            targetGrid = DataTextureBaker.RoundUpToPowerOfTwo(targetGrid);
+            gridWidth = Mathf.Max(gridWidth, targetGrid);
+            gridHeight = Mathf.Max(gridHeight, targetGrid);
+
             SpatialGrid spatialGrid;
             do
             {
                 spatialGrid = SpatialGridBuilder.Build(
                     primitiveArray,
-                    options.GridWidth,
-                    options.GridHeight,
+                    gridWidth,
+                    gridHeight,
                     maxPerCell);
-                if (spatialGrid.DroppedPrimitiveReferences == 0 || maxPerCell >= maxPerCellCap)
+                if (spatialGrid.DroppedPrimitiveReferences == 0)
+                {
+                    break;
+                }
+
+                if (gridWidth < gridResCap || gridHeight < gridResCap)
+                {
+                    var nextW = Mathf.Min(gridResCap, Mathf.Max(gridWidth + 8, gridWidth * 2));
+                    var nextH = Mathf.Min(gridResCap, Mathf.Max(gridHeight + 8, gridHeight * 2));
+                    nextW = DataTextureBaker.RoundUpToPowerOfTwo(nextW);
+                    nextH = DataTextureBaker.RoundUpToPowerOfTwo(nextH);
+                    if (nextW > gridWidth || nextH > gridHeight)
+                    {
+                        Debug.Log(SdfxLanguage.Compiler.GridResolutionRaised(
+                            gridWidth, gridHeight, nextW, nextH, spatialGrid.DroppedPrimitiveReferences));
+                        gridWidth = nextW;
+                        gridHeight = nextH;
+                        continue;
+                    }
+                }
+
+                if (maxPerCell >= maxPerCellCap)
                 {
                     break;
                 }
@@ -224,11 +276,22 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 Debug.LogWarning(SdfxLanguage.Compiler.GridClippingWarning(spatialGrid.DroppedPrimitiveReferences, maxPerCell));
             }
 
+            options.GridWidth = gridWidth;
+            options.GridHeight = gridHeight;
+
+            var useHalfIndices = DataTextureBaker.CanUseHalfIndices(spatialGrid);
+            var formatReport = DataTextureBaker.DescribeFormats(spatialGrid);
+            Debug.Log(SdfxLanguage.Compiler.DataTextureFormats(
+                formatReport.PrimitiveFormat,
+                formatReport.GridLookupFormat,
+                formatReport.GridIndexFormat,
+                formatReport.PathFormat));
+
             var bakeWatch = Stopwatch.StartNew();
             var primitiveTex = DataTextureBaker.BakePrimitiveTexture(primitiveArray);
-            var gridTex = DataTextureBaker.BakeGridLookupTexture(spatialGrid);
-            var gridIndexTex = DataTextureBaker.BakeGridIndexTexture(spatialGrid, 256);
-            var pathTex = DataTextureBaker.BakePathDataTexture(parseResult.PathEdges);
+            var gridTex = DataTextureBaker.BakeGridLookupTexture(spatialGrid, useHalfIndices);
+            var gridIndexTex = DataTextureBaker.BakeGridIndexTexture(spatialGrid, 256, useHalfIndices);
+            var pathTex = DataTextureBaker.BakePathDataTexture(pathEdges);
             bakeWatch.Stop();
 
             var hasTransparency = ResolveTransparency(options);
@@ -270,10 +333,11 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 }
             }
 
+            enabledModuleIds = StripGrabPassForQuest(enabledModuleIds, isQuest);
+
             var resolvedModules = ShaderModuleRegistry.Resolve(enabledModuleIds, options.ModuleLodTier);
             var samplerCount = ShaderModuleRegistry.TotalExtraSamplerCount(resolvedModules);
-            if (options.OptimizationProfile == OptimizationProfile.Quest
-                && samplerCount > CorePipeline.QuestMaxSamplerBudget)
+            if (isQuest && samplerCount > CorePipeline.QuestMaxSamplerBudget)
             {
                 Debug.LogWarning(SdfxLanguage.Compiler.SamplerBudgetExceeded(samplerCount, CorePipeline.QuestMaxSamplerBudget));
             }
@@ -291,8 +355,12 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 Modules = resolvedModules,
                 OptimizationProfile = options.OptimizationProfile,
                 FlatTextures = FlatTextureLayout.FromTextures(primitiveTex, gridIndexTex, pathTex),
-                EnableForwardAddPass = options.EnableForwardAddPass,
-                EnableShadowReceiving = options.EnableShadowReceiving
+                EnableForwardAddPass = enableForwardAdd,
+                EnableShadowReceiving = options.EnableShadowReceiving,
+                HasBakedSdfAtlas = hasBakedSdf,
+                BakedSdfPxRange = pathSdfBake.PxRange,
+                HardEdgeCoverage = hardEdgeCoverage,
+                EnableVertexPointLights = enableVertexPointLights
             };
 
             if (resolvedModules.Count > 20)
@@ -348,6 +416,23 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             AssetDatabase.CreateAsset(gridIndexTex, gridIndexAssetPath);
             AssetDatabase.CreateAsset(pathTex, pathAssetPath);
 
+            Texture2D bakedSdfAtlas = null;
+            Texture2D bakedSdfMeta = null;
+            if (hasBakedSdf)
+            {
+                bakedSdfAtlas = pathSdfBake.Atlas;
+                bakedSdfMeta = pathSdfBake.Meta;
+                var atlasPath = Path.Combine(outputDirectory, sourceName + "_BakedSdfAtlas.asset").Replace("\\", "/");
+                var metaPath = Path.Combine(outputDirectory, sourceName + "_BakedSdfMeta.asset").Replace("\\", "/");
+                AssetDatabase.CreateAsset(bakedSdfAtlas, atlasPath);
+                AssetDatabase.CreateAsset(bakedSdfMeta, metaPath);
+                bakedSdfAtlas.filterMode = FilterMode.Bilinear;
+                bakedSdfAtlas.wrapMode = TextureWrapMode.Clamp;
+                bakedSdfMeta.filterMode = FilterMode.Point;
+                EditorUtility.SetDirty(bakedSdfAtlas);
+                EditorUtility.SetDirty(bakedSdfMeta);
+            }
+
             var materialPath = MaterialGenerator.CreateMaterialAsset(
                 shaderName,
                 outputDirectory,
@@ -358,12 +443,37 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 sourceName,
                 hasTransparency,
                 options.BackgroundColor,
-                generationRequest.ResolvedBlendMode);
+                generationRequest.ResolvedBlendMode,
+                bakedSdfAtlas,
+                bakedSdfMeta,
+                pathSdfBake.PxRange,
+                hardEdgeCoverage);
             var material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             DecalCompositor.ApplyToMaterial(material, options.DecalLayers);
             if (options.DecalLayers != null && options.DecalLayers.Count > 0)
             {
                 EditorUtility.SetDirty(material);
+            }
+
+            var lodFlatPath = LodFlatExporter.WriteFlatTexture(
+                outputDirectory,
+                sourceName,
+                primitiveArray,
+                pathEdges,
+                options.BackgroundColor,
+                bakedSdfAtlas: bakedSdfAtlas,
+                bakedSdfMeta: bakedSdfMeta);
+            var lodFlatMatPath = LodFlatExporter.CreateLodFlatMaterial(
+                outputDirectory,
+                sourceName,
+                lodFlatPath,
+                hasTransparency);
+            var lodFlatMat = string.IsNullOrEmpty(lodFlatMatPath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<Material>(lodFlatMatPath);
+            if (material != null && lodFlatMat != null)
+            {
+                LodFlatExporter.CreateLodGroupPrefab(outputDirectory, sourceName, material, lodFlatMat);
             }
 
             var compiledAsset = ScriptableObject.CreateInstance<CompiledVectorTextureAsset>();
@@ -373,6 +483,8 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             compiledAsset.gridLookupTexture = gridTex;
             compiledAsset.gridIndexTexture = gridIndexTex;
             compiledAsset.pathDataTexture = pathTex;
+            compiledAsset.bakedSdfAtlas = bakedSdfAtlas;
+            compiledAsset.bakedSdfMeta = bakedSdfMeta;
             compiledAsset.material = material;
             compiledAsset.compileReport = BuildCompileReport(
                 options,
@@ -392,7 +504,12 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 gridWatch.ElapsedMilliseconds,
                 bakeWatch.ElapsedMilliseconds,
                 codegenWatch.ElapsedMilliseconds,
-                assetWriteWatch.ElapsedMilliseconds);
+                assetWriteWatch.ElapsedMilliseconds,
+                pathSdfBake.BakedCount,
+                gridWidth,
+                gridHeight,
+                formatReport,
+                pathEdges.Count);
 
             var compiledAssetPath = Path.Combine(outputDirectory, sourceName + "_Compiled.asset").Replace("\\", "/");
             AssetDatabase.CreateAsset(compiledAsset, compiledAssetPath);
@@ -442,10 +559,15 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             long gridMs,
             long bakeMs,
             long codegenMs,
-            long assetMs)
+            long assetMs,
+            int bakedPathCount = 0,
+            int gridWidth = 32,
+            int gridHeight = 32,
+            DataTextureBaker.FormatReport formatReport = null,
+            int pathEdgeCount = -1)
         {
             const int highPathEdgeThreshold = 500;
-            var totalPathEdges = parseResult.PathEdges?.Count ?? 0;
+            var totalPathEdges = pathEdgeCount >= 0 ? pathEdgeCount : (parseResult.PathEdges?.Count ?? 0);
             var highPathEdgeCount = totalPathEdges > highPathEdgeThreshold;
             if (highPathEdgeCount)
             {
@@ -462,6 +584,7 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                 coordinateModel = options.CoordinateModel.ToString(),
                 rasterAlgorithm = string.Empty,
                 buildQuestVariant = options.BuildQuestVariant,
+                aggressiveOcclusionClipping = options.AggressiveOcclusionClipping,
                 counts = new PrimitiveCountReport
                 {
                     parsed = parseResult.Primitives.Count,
@@ -469,7 +592,10 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                     resolved = resolvedCount,
                     quantized = quantizedCount,
                     final = finalCount,
-                    pathEdges = totalPathEdges
+                    pathEdges = totalPathEdges,
+                    bakedPaths = bakedPathCount,
+                    gridWidth = gridWidth,
+                    gridHeight = gridHeight
                 },
                 timings = new StageTimingReport
                 {
@@ -493,7 +619,17 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
                     totalWarnings = parseWarnings
                         + (droppedGridReferences > 0 ? 1 : 0)
                         + (highPathEdgeCount ? 1 : 0)
-                }
+                },
+                dataTextureFormats = formatReport == null
+                    ? null
+                    : new DataTextureFormatReport
+                    {
+                        primitiveFormat = formatReport.PrimitiveFormat,
+                        gridLookupFormat = formatReport.GridLookupFormat,
+                        gridIndexFormat = formatReport.GridIndexFormat,
+                        pathFormat = formatReport.PathFormat,
+                        usedHalfIndices = formatReport.UsedHalfIndices
+                    }
             };
 
             for (var i = 0; i < parseResult.Issues.Count; i++)
@@ -510,6 +646,34 @@ namespace SDFX.VectorTextureCompiler.Core.Compiler
             }
 
             return report;
+        }
+
+        private static List<string> StripGrabPassForQuest(List<string> enabledModuleIds, bool isQuest)
+        {
+            if (!isQuest || enabledModuleIds == null || enabledModuleIds.Count == 0)
+            {
+                return enabledModuleIds;
+            }
+
+            var filtered = new List<string>(enabledModuleIds.Count);
+            var removed = false;
+            for (var i = 0; i < enabledModuleIds.Count; i++)
+            {
+                if (string.Equals(enabledModuleIds[i], "grabpass", StringComparison.OrdinalIgnoreCase))
+                {
+                    removed = true;
+                    continue;
+                }
+
+                filtered.Add(enabledModuleIds[i]);
+            }
+
+            if (removed)
+            {
+                Debug.LogWarning(SdfxLanguage.Compiler.GrabPassQuestBlocked);
+            }
+
+            return filtered;
         }
 
         private static string ToAbsolutePath(string assetPath)

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using SDFX.VectorTextureCompiler.Core.CodeGen;
 
@@ -76,11 +75,11 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
         {
             public static string WindowTitle => Get("editor.windowTitle", "SDFX Compiler");
             public static string Header => Get("editor.header", "GPU-Native Vector Texture Compiler");
-            public static string SourceField => Get("editor.sourceField", "Source (SVG asset or TextAsset)");
+            public static string SourceField => Get("editor.sourceField", "Source");
             public static string SourceTypeField => Get("editor.sourceTypeField", "Source Type");
             public static string BrowseButton => Get("editor.browseButton", "Browse");
             public static string OutputDirectoryField => Get("editor.outputDirectoryField", "Output Root Override");
-            public static string OutputDirectoryAutoHelp => Get("editor.outputDirectoryAutoHelp", "Leave empty to write each compile to Generated/{name} beside the source.");
+            public static string OutputDirectoryAutoHelp => Get("editor.outputDirectoryAutoHelp", "Leave empty to write each compile to ~./Generated/{name}");
             public static string OutputDirectoryResolved(string path) => Get("editor.outputDirectoryResolved", "Next compile: {0}").Replace("{0}", path);
             public static string CompileOptionsHeader => Get("editor.compileOptionsHeader", "Compile Options");
             public static string CompileBlendModeField => Get("editor.compileBlendModeField", "Compile Blend Mode");
@@ -108,10 +107,13 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string DecalAddButton => Get("editor.decalAddButton", "Add Decal Layer");
             public static string EnableForwardAddPassField => Get(
                 "editor.enableForwardAddPassField",
-                "ForwardAdd Pass (extra lights)");
+                "ForwardAdd Pass");
             public static string EnableForwardAddPassHelp => Get(
                 "editor.enableForwardAddPassHelp",
                 "Adds realtime point/spot lighting.");
+            public static string EnableForwardAddPassQuestHelp => Get(
+                "editor.enableForwardAddPassQuestHelp",
+                "ForwardAdd is disabled on Quest.");
             public static string EnableShadowReceivingField => Get(
                 "editor.enableShadowReceivingField",
                 "Receive Shadows");
@@ -120,7 +122,13 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
                 "ForwardBase receives the main directional light's realtime shadows");
             public static string EnableShadowReceivingQuestHelp => Get(
                 "editor.enableShadowReceivingQuestHelp",
-                "Shadow receiving is skipped on the Quest profile.");
+                "Shadow recieving is disabled for quest GPUs, because it is incredibly expensive.");
+            public static string AggressiveOcclusionClippingField => Get(
+                "editor.aggressiveOcclusionClippingField",
+                "Aggressive Occlusion Clipping");
+            public static string AggressiveOcclusionClippingHelp => Get(
+                "editor.aggressiveOcclusionClippingHelp",
+                "Clips covered paths. Can split shapes. Off by default.");
             public static string ReportPingButton => Get("editor.reportPingButton", "Ping Asset");
             public static string ReportOpenFolderButton => Get("editor.reportOpenFolderButton", "Open Folder");
             public static string ReportRecompileButton => Get("editor.reportRecompileButton", "Recompile");
@@ -131,10 +139,10 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string BackgroundColorField => Get("editor.backgroundColorField", "Background Color");
             public static string TransparencyModeField => Get("editor.transparencyModeField", "Transparency");
             public static string ModulesHeader => Get("editor.modulesHeader", "Shader Modules");
-            public static string ModulesHelp => Get("editor.modulesHelp", "Selected modules are compiled into the generated shader behind keywords. They cost nothing until enabled on the material.");
+            public static string ModulesHelp => Get("editor.modulesHelp", "Selected modules are compiled into the generated shader behind keywords.");
             public static string ModulesCustomHelp => Get(
                 "editor.modulesCustomHelp",
-                "Add custom modules with Create → SDFX → Shader Module Definition, or from a C# class marked [SdfxModule]. Asset modules appear below after reload.");
+                "Add custom modules with a Shader Module Definition.");
             public static string ModulesAssetCount(int count)
                 => Get("editor.modulesAssetCount", "Asset modules registered: {0}").Replace("{0}", count.ToString());
             public static string ModulesCreateAssetButton => Get("editor.modulesCreateAssetButton", "Create Module Definition");
@@ -152,7 +160,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string DisableModuleButton => Get("editor.disableModuleButton", "Disable");
             public static string DisableModuleTooltip(string displayName)
                 => Get("editor.disableModuleTooltip", "Disable {0}").Replace("{0}", displayName);
-            public static string SamplerBudgetLabel => Get("editor.samplerBudgetLabel", "Extra Samplers (Quest)");
+            public static string SamplerBudgetLabel => Get("editor.samplerBudgetLabel", "Extra Samplers");
             public static string MoreIssues(int count)
                 => Get("editor.moreIssues", "+ {0} more").Replace("{0}", count.ToString());
 
@@ -173,17 +181,17 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
 
             public static string[] CompileBlendModeDescriptions => new[]
             {
-                Get("editor.blendModeDescOpaque", "Solid surface, no transparency."),
-                Get("editor.blendModeDescCutout", "Hard alpha cutout. Pair with Alpha Clip threshold."),
-                Get("editor.blendModeDescFade", "Alpha fade without premultiplication."),
-                Get("editor.blendModeDescTransparent", "Standard alpha blending."),
-                Get("editor.blendModeDescAdditive", "Additive glow. Brightens the framebuffer."),
+                Get("editor.blendModeDescOpaque", "Fully opaque"),
+                Get("editor.blendModeDescCutout", "Hard alpha cutout."),
+                Get("editor.blendModeDescFade", "Alpha fade."),
+                Get("editor.blendModeDescTransparent", "Alpha."),
+                Get("editor.blendModeDescAdditive", "Additive glow."),
                 Get("editor.blendModeDescMultiply", "Multiplies destination color by source."),
-                Get("editor.blendModeDescScreen", "Screen blend. Soft brightening."),
-                Get("editor.blendModeDescOverlay", "Overlay compositing in the fragment shader."),
-                Get("editor.blendModeDescSoftLight", "Soft light compositing in the fragment shader."),
-                Get("editor.blendModeDescPremultipliedAlpha", "Premultiplied alpha for cleaner edges."),
-                Get("editor.blendModeDescSoftAdditive", "Soft additive. Gentler than full additive.")
+                Get("editor.blendModeDescScreen", "Screen blend."),
+                Get("editor.blendModeDescOverlay", "Overlay compositing."),
+                Get("editor.blendModeDescSoftLight", "Soft light compositing."),
+                Get("editor.blendModeDescPremultipliedAlpha", "Premultiplied alpha."),
+                Get("editor.blendModeDescSoftAdditive", "Soft additive.")
             };
 
             public static string CoreBlendModeDisplayName => Get("editor.coreBlendModeDisplayName", "Blend Mode");
@@ -203,13 +211,13 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
                 Get("editor.renderQueueDescBackground", "Renders behind everything (queue 1000)."),
                 Get("editor.renderQueueDescGeometry", "Default opaque geometry (queue 2000)."),
                 Get("editor.renderQueueDescAlphaTest", "Alpha-tested cutout geometry (queue 2450)."),
-                Get("editor.renderQueueDescTransparent", "Transparent sorting bucket (queue 3000)."),
+                Get("editor.renderQueueDescTransparent", "Transparent sort (queue 3000)."),
                 Get("editor.renderQueueDescOverlay", "Overlay / on-top effects (queue 4000).")
             };
             public static string CompileButton => Get("editor.compileButton", "Compile");
             public static string LatestCompileReportHeader => Get("editor.latestCompileReportHeader", "Latest Compile Report");
             public static string ClearReportButton => Get("editor.clearReportButton", "Clear Report");
-            public static string NoReportHelp => Get("editor.noReportHelp", "Run a compile to view stage metrics and warnings here.");
+            public static string NoReportHelp => Get("editor.noReportHelp", "Run a compile to view metrics and warnings.");
             public static string CompiledAssetLabel => Get("editor.compiledAssetLabel", "Compiled Asset");
             public static string UnknownValue => Get("editor.unknownValue", "(unknown)");
             public static string GeneratedUtcLabel => Get("editor.generatedUtcLabel", "Generated (UTC)");
@@ -228,7 +236,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string WarningsHeader => Get("editor.warningsHeader", "Warnings");
             public static string ParseWarnings => Get("editor.parseWarnings", "Parse Warnings");
             public static string ParseErrors => Get("editor.parseErrors", "Parse Errors");
-            public static string DroppedGridRefs => Get("editor.droppedGridRefs", "Dropped Grid References");
+            public static string DroppedGridRefs => Get("editor.droppedGridRefs", "Dropped References");
             public static string HighPathEdgeCount => Get("editor.highPathEdgeCount", "High Path Edge Count");
             public static string TotalWarnings => Get("editor.totalWarnings", "Total Warnings");
             public static string TimingsHeader => Get("editor.timingsHeader", "Timings (ms)");
@@ -277,7 +285,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string ParseErrorsPreventedCompilation => Get("compiler.parseErrorsPreventedCompilation", "Parse errors prevented compilation.");
             public static string CompileSucceeded => Get("compiler.compileSucceeded", "Compile succeeded.");
             public static string ProjectRootResolveFailed => Get("compiler.projectRootResolveFailed", "Unable to resolve Unity project root.");
-            public static string OutputMustBeInsideAssets => Get("compiler.outputMustBeInsideAssets", "Output must be located under Assets for AssetDatabase import.");
+            public static string OutputMustBeInsideAssets => Get("compiler.outputMustBeInsideAssets", "Output must be located under Assets.");
             public static string OutputDirectoryMustBeInsideAssets => Get("compiler.outputDirectoryMustBeInsideAssets", "Output directory must be inside Assets.");
 
             public static string CompileSkipped(string message)
@@ -336,7 +344,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             {
                 var format = Get(
                     "compiler.moduleConflictsSummary",
-                    "SDFX: {0} module conflicts (lighting models overlap). Examples: {1}. Enable one lighting model, or use Avatar/Toon/PBR instead of All Modules.");
+                    "SDFX: {0} module conflicts. Examples: {1}.");
                 return string.Format(format, count, examples);
             }
 
@@ -344,13 +352,49 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             {
                 var format = Get(
                     "compiler.largeModuleShaderWarning",
-                    "SDFX is compiling {0} shader modules into one generated shader. Use the Avatar or Toon preset for faster imports; All Modules creates a very large shader.");
+                    "SDFX is compiling {0} shader modules into one huge shader");
                 return string.Format(format, moduleCount);
             }
 
             public static string GrabPassCompileWarning => Get(
                 "compiler.grabPassCompileWarning",
-                "SDFX compiled GrabPass into this shader. ShaderLab passes ignore material keywords. Every material on this shader pays for a full-screen grab. Recompile without grabpass unless you need it.");
+                "SDFX compiled GrabPass into this shader. GrabPass is expensive even if unused.");
+
+            public static string GrabPassQuestBlocked => Get(
+                "compiler.grabPassQuestBlocked",
+                "SDFX Quest profile blocked GrabPass.");
+
+            public static string PathSdfBakeStage(int bakedCount, int atlasSize, float pxRange)
+            {
+                var format = Get(
+                    "compiler.pathSdfBakeStage",
+                    "SDFX Stage PathSdfBake: baked={0}, atlas={1}x{1}, pxRange={2:0.#}");
+                return string.Format(format, bakedCount, atlasSize, pxRange);
+            }
+
+            public static string DataTextureFormats(
+                string primitive,
+                string gridLookup,
+                string gridIndex,
+                string path)
+            {
+                var format = Get(
+                    "compiler.dataTextureFormats",
+                    "SDFX data textures: primitive={0}, gridLookup={1}, gridIndex={2}, path={3}");
+                return string.Format(format, primitive, gridLookup, gridIndex, path);
+            }
+
+            public static string GridResolutionRaised(int fromW, int fromH, int toW, int toH, int dropped)
+            {
+                var format = Get(
+                    "compiler.gridResolutionRaised",
+                    "SDFX raised grid resolution {0}x{1} → {2}x{3} (dropped refs={4}).");
+                return string.Format(format, fromW, fromH, toW, toH, dropped);
+            }
+
+            public static string LodFlatShaderMissing => Get(
+                "compiler.lodFlatShaderMissing",
+                "SDFX: Unlit shader missing for LOD flat material.");
 
             public static string AssetModuleDuplicate(string id)
                 => Get("compiler.assetModuleDuplicate", "SDFX skipped asset module '{0}' because that id is already registered.")
@@ -468,11 +512,11 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string BaseHeader => Get("shadergui.baseHeader", "Base");
             public static string ModulesHeader => Get("shadergui.modulesHeader", "Effect Modules");
             public static string BakedDataHeader => Get("shadergui.bakedDataHeader", "Baked Vector Data");
-            public static string BakedDataHelp => Get("shadergui.bakedDataHelp", "These textures are generated by the SDFX compiler. Replacing them by hand will break rendering; recompile the source asset instead.");
+            public static string BakedDataHelp => Get("shadergui.bakedDataHelp", "These textures are generated by the SDFX compiler, replacing them by hand will break rendering.");
             public static string MetricsHeader => Get("shadergui.metricsHeader", "Primitive Metrics");
             public static string MetricsHelp => Get(
                 "shadergui.metricsHelp",
-                "Profiles each primitive with Unity Profiler.");
+                "Profiles each primitive with Unity Profiler");
             public static string MetricsProfileButton => Get("shadergui.metricsProfileButton", "Profile Per-Primitive");
             public static string MetricsProfileWithGpuButton => Get("shadergui.metricsProfileWithGpuButton", "Benchmark + Material GPU");
             public static string MetricsCopyButton => Get("shadergui.metricsCopyButton", "Copy to Clipboard");
@@ -482,12 +526,12 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string MetricsColIndex => Get("shadergui.metricsColIndex", "#");
             public static string MetricsColType => Get("shadergui.metricsColType", "Type");
             public static string MetricsColEdges => Get("shadergui.metricsColEdges", "Edges");
-            public static string MetricsColCpu => Get("shadergui.metricsColCpu", "CPU µs");
+            public static string MetricsColCpu => Get("shadergui.metricsColCpu", "CPU us");
             public static string MetricsColShare => Get("shadergui.metricsColShare", "Share");
             public static string MetricsMaterialGpu(double ms)
                 => string.Format(Get("shadergui.metricsMaterialGpu", "Material GPU fence avg: {0:0.000} ms / frame (128x128)"), ms);
             public static string MetricsMaterialGpuRange(double minMs, double maxMs)
-                => string.Format(Get("shadergui.metricsMaterialGpuRange", "Material GPU range: {0:0.000} - {1:0.000} ms"), minMs, maxMs);
+                => string.Format(Get("shadergui.metricsMaterialGpuRange", "Material GPU range: {0:0.000} to {1:0.000} ms"), minMs, maxMs);
             public static string MetricsFrameTiming(double cpuMs, double gpuMs)
                 => string.Format(Get("shadergui.metricsFrameTiming", "FrameTimingManager avg CPU {0:0.000} ms | GPU {1:0.000} ms"), cpuMs, gpuMs);
             public static string MetricsTotalCpu(double ms, int count)
@@ -530,7 +574,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string SubColorGrading => Get("shadergui.subColorGrading", "Color Grading");
             public static string SubVertexColor => Get("shadergui.subVertexColor", "Vertex Colors");
             public static string SubStencil => Get("shadergui.subStencil", "Stencil");
-            public static string StencilHelp => Get("shadergui.stencilHelp", "Stencil is optional. Leave defaults unless you need masking, portals, or see-through effects.");
+            public static string StencilHelp => Get("shadergui.stencilHelp", "Stencil is optional, don't touch it unless you know what you are doing.");
             public static string ModulesEnableAll => Get("shadergui.modulesEnableAll", "Enable All");
             public static string ModulesDisableAll => Get("shadergui.modulesDisableAll", "Disable All");
             public static string ModulesExpandAll => Get("shadergui.modulesExpandAll", "Expand All");
@@ -547,23 +591,23 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             {
                 var format = Get(
                     "shadergui.optimizeConfirmMessage",
-                    "Regenerate this shader with only the {0} currently enabled modules ({1} compiled-in modules will shrink). Baked vector data is kept.");
+                    "Regenerate this shader with only the {0} currently enabled modules ({1} compiled-in modules will shrink).");
                 return string.Format(format, enabledCount, compiledCount);
             }
 
             public static string RecompileShaderTitle => Get("shadergui.recompileShaderTitle", "Re-compile SDFX Shader");
             public static string RecompileShaderHelp => Get(
                 "shadergui.recompileShaderHelp",
-                "Choose which modules to bake into the shader. Data textures are not rebuilt. Add modules here, then enable them on the material.");
+                "Choose which modules to bake into the shader. Add modules here, then enable them on the material.");
             public static string RecompileShaderConfirm => Get("shadergui.recompileShaderConfirm", "Re-compile Shader");
-            public static string ReceiveShadowsField => Get("shadergui.receiveShadowsField", "Receive Main Light Shadows");
+            public static string ReceiveShadowsField => Get("shadergui.receiveShadowsField", "Receive Light Shadows");
             public static string ReceiveShadowsTooltip => Get(
                 "shadergui.receiveShadowsTooltip",
-                "Bakes a ForwardBase path into the shader.");
-            public static string ForwardAddPassField => Get("shadergui.forwardAddPassField", "ForwardAdd Pass)");
+                "Bakes a ForwardBase shadow-receive into the shader.");
+            public static string ForwardAddPassField => Get("shadergui.forwardAddPassField", "ForwardAdd Pass");
             public static string ForwardAddPassTooltip => Get(
                 "shadergui.forwardAddPassTooltip",
-                "Bakes an additive ForwardAdd pass for realtime point/spot lights. Very expensive.");
+                "Bakes an additive ForwardAdd pass for realtime point/spot lights. Very expensive");
             public static string CancelButton => Get("shadergui.cancelButton", "Cancel");
             public static string ModulesSelectEnabled => Get("shadergui.modulesSelectEnabled", "Enabled");
             public static string ModuleNotInShaderSuffix => Get("shadergui.moduleNotInShaderSuffix", "(new)");
@@ -581,11 +625,11 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
                 "This material is not using a generated SDFX shader asset on disk.");
             public static string MissingBakedTextures => Get(
                 "shadergui.missingBakedTextures",
-                "Baked SDFX data textures are missing. Full recompile from source is required.");
+                "Baked SDFX data textures are missing. Full recompile is required.");
             public static string ShaderActionsHeader => Get("shadergui.shaderActionsHeader", "Shader Actions");
             public static string ShaderActionsHelp => Get(
                 "shadergui.shaderActionsHelp",
-                "Optimize strips unused modules. Re-compile regenerates the shader only so you can add or change modules without rebaking data.");
+                "Optimize strips unused modules.");
 
             public static string ModulesSelectedCount(int selected, int total)
             {
@@ -595,13 +639,13 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
 
             public static string ModulePickerConflicts(int count)
             {
-                var format = Get("shadergui.modulePickerConflicts", "{0} module conflicts in the selection (usually overlapping lighting models).");
+                var format = Get("shadergui.modulePickerConflicts", "{0} module conflicts in the selection (lighting models).");
                 return string.Format(format, count);
             }
 
             public static string ShaderRegenerated(int moduleCount)
             {
-                var format = Get("shadergui.shaderRegenerated", "SDFX regenerated shader with {0} modules (data textures unchanged).");
+                var format = Get("shadergui.shaderRegenerated", "SDFX regenerated shader with {0} modules.");
                 return string.Format(format, moduleCount);
             }
 
@@ -638,7 +682,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             {
                 var format = Get(
                     "shadergui.blendModeInfo",
-                    "{0}: Src={1} Dst={2} ZWrite={3} · Render queue {4}");
+                    "{0}: Src={1} Dst={2} ZWrite={3} Render queue {4}");
                 return string.Format(format, preset, src, dst, zWrite, queue);
             }
 
@@ -684,7 +728,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
 
             public static string InspectorHelp => Get(
                 "moduledef.inspectorHelp",
-                "Assign HLSL hook assets (.hlsl / .txt / TextAsset). Fragment locals: uv, col, art, sdfDist, worldNormal, viewDir, i. This asset registers on import — enable it under Shader Modules, then recompile.");
+                "Assign HLSL hook assets (.hlsl / .txt / TextAsset). Fragment locals: uv, col, art, sdfDist, worldNormal, viewDir, i.");
             public static string ReloadButton => Get("moduledef.reloadButton", "Reload Shader Modules");
             public static string SectionIdentity => Get("moduledef.sectionIdentity", "Identity");
             public static string SectionHooks => Get("moduledef.sectionHooks", "HLSL Hooks");
@@ -696,7 +740,7 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string Description => Get("moduledef.description", "Description");
             public static string Category => Get("moduledef.category", "Category");
             public static string Order => Get("moduledef.order", "Order");
-            public static string OrderTooltip => Get("moduledef.orderTooltip", "Hook execution order. Lower runs first. Prefer 800+ for third-party modules.");
+            public static string OrderTooltip => Get("moduledef.orderTooltip", "Hook priority. Prefer 800+ for third-party modules.");
             public static string LodTier => Get("moduledef.lodTier", "LOD Tier");
             public static string LodTierTooltip => Get("moduledef.lodTierTooltip", "Strip this module when Module LOD Tier is below this value (0 = always).");
             public static string ConflictIds => Get("moduledef.conflictIds", "Conflict Ids");
@@ -799,23 +843,32 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string OutputFolderField => Get("raster.outputFolderField", "Output Folder");
             public static string BrowseButton => Get("raster.browseButton", "Browse");
             public static string DefaultOutputFolder(string folder) => string.Format(Get("raster.defaultOutputFolder", "Default: same folder as source ({0})"), folder);
-            public static string WriteFlatPreviewField => Get("raster.writeFlatPreviewField", "Write Flat Preview PNG");
-            public static string FlatPreviewBackgroundField => Get("raster.flatPreviewBackgroundField", "Flat Preview Background");
             public static string VectorizationSettingsHeader => Get("raster.vectorizationSettingsHeader", "Vectorization Settings");
-            public static string AlgorithmField => Get("raster.algorithmField", "Algorithm");
-            public static string CommonSettingsLabel => Get("raster.commonSettingsLabel", "Common");
-            public static string UseComputeAccelerationField => Get("raster.useComputeAccelerationField", "Compute Acceleration");
-            public static string MinAlphaField => Get("raster.minAlphaField", "Min Alpha");
-            public static string MaxPathsField => Get("raster.maxPathsField", "Max Paths");
-            public static string EdgeThresholdField => Get("raster.edgeThresholdField", "Edge Threshold");
-            public static string SampleStrideField => Get("raster.sampleStrideField", "Sample Stride");
-            public static string UseTilingField => Get("raster.useTilingField", "Use Tiling");
-            public static string TileSizeField => Get("raster.tileSizeField", "Tile Size");
-            public static string TileOverlapField => Get("raster.tileOverlapField", "Tile Overlap");
-            public static string AutoTileMinDimensionField => Get("raster.autoTileMinDimensionField", "Auto Tile Min Dimension");
+            public static string ColorModeField => Get("raster.colorModeField", "Color Mode");
+            public static string CurveModeField => Get("raster.curveModeField", "Curve Mode");
+            public static string FilterSpeckleField => Get("raster.filterSpeckleField", "Filter Speckle");
+            public static string CornerThresholdField => Get("raster.cornerThresholdField", "Corner Threshold");
+            public static string SpliceThresholdField => Get("raster.spliceThresholdField", "Splice Threshold");
+            public static string PrecisionField => Get("raster.precisionField", "Output Precision");
+            public static string SimplifyToleranceField => Get("raster.simplifyToleranceField", "Simplify Tolerance");
+            public static string MinSimilarityField => Get("raster.minSimilarityField", "Min Similarity %");
+            public static string MinSimilarityHelp => Get("raster.minSimilarityHelp", "0 = fixed tolerance. Higher = keep more detail while auto-simplifying.");
+            public static string EngineName => Get("raster.engineName", "VTracer");
+            public static string AutoConvertDefaultReason => Get("raster.autoConvertDefaultReason", "Default VTracer settings.");
+            public static string NativeDllConsentTitle => Get("raster.nativeDllConsentTitle", "SDFX Native Rasterizer");
+            public static string NativeDllConsentMessage => Get(
+                "raster.nativeDllConsentMessage",
+                "This tool can load sdfx_rasterizer.dll (native code) into the Editor process.\n\nIt is not loaded until you Agree. You'll be asked again if the DLL file changes.")
+                .Replace("\\n", "\n");
+            public static string NativeDllConsentAccept => Get("raster.nativeDllConsentAccept", "Agree");
+            public static string NativeDllConsentDecline => Get("raster.nativeDllConsentDecline", "Cancel");
+            public static string NativeDllMissing => Get(
+                "raster.nativeDllMissing",
+                "sdfx_rasterizer.dll is missing. Rebuild it with RasterizerSource~/build-dll.ps1.");
+            public static string NativeDllHashFailed(string detail)
+                => string.Format(Get("raster.nativeDllHashFailed", "Could not hash the native DLL: {0}"), detail);
             public static string ConvertToSvgButton => Get("raster.convertToSvgButton", "Convert To SVG");
             public static string PingSvgButton => Get("raster.pingSvgButton", "Ping SVG");
-            public static string PreviewLabel => Get("raster.previewLabel", "Preview");
             public static string StatusSelectSource => Get("raster.statusSelectSource", "Select a source texture.");
             public static string DefaultSourceName => Get("raster.defaultSourceName", "Raster");
             public static string StatusOutputFolderFailed => Get("raster.statusOutputFolderFailed", "Could not resolve output folder.");
@@ -827,15 +880,13 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string OutputOutsideProject => Get("raster.outputOutsideProject", "Output folder must be inside the Unity project Assets folder.");
             public static string OkButton => Get("raster.okButton", "OK");
             public static string SelectTexturesFirst => Get("raster.selectTexturesFirst", "Select one or more Texture2D assets first.");
-            public static string ProgressAnalyzing(string textureName, int index, int total)
-                => string.Format(Get("raster.progressAnalyzing", "Analyzing {0} ({1}/{2})…"), textureName, index, total);
             public static string ProgressConverting(string textureName, string algorithmName, int index, int total)
                 => string.Format(Get("raster.progressConverting", "Converting {0} with {1} ({2}/{3})…"), textureName, algorithmName, index, total);
             public static string AutoConvertSuccessLog(string assetPath, string svgPath, int pathCount, string algorithmName, string reason)
                 => string.Format(
                     Get(
                         "raster.autoConvertSuccessLog",
-                        "SDFX Rasterizer auto-converted '{0}' → '{1}' ({2} paths) using {3}.\nWhy: {4}"),
+                        "SDFX Rasterizer auto-converted '{0}' → '{1}' ({2} paths) using {3}. Why: {4}"),
                     assetPath,
                     svgPath,
                     pathCount,
@@ -851,93 +902,6 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
                     reason);
             public static string BatchResultSummary(int converted, int failed)
                 => string.Format(Get("raster.batchResultSummary", "Converted {0} texture(s), {1} failed. Check the Console for details."), converted, failed);
-            public static string BestForLabel(string bestFor) => string.Format(Get("raster.bestForLabel", "Best for: {0}"), bestFor);
-            public static string SentisUnavailableNeural => Get("raster.sentisUnavailableNeural", "Unity Sentis is not available. Neural vectorization requires the Sentis package.");
-            public static string SentisUnavailableHybrid => Get("raster.sentisUnavailableHybrid", "Unity Sentis is not available. Hybrid neural vectorization requires the Sentis package.");
-            public static string AssignNeuralModelHelp => Get("raster.assignNeuralModelHelp", "Assign a Sentis ModelAsset for neural vectorization.");
-            public static string AssignSegmentationModelHelp => Get("raster.assignSegmentationModelHelp", "Assign a Sentis segmentation ModelAsset.");
-            public static string ModelLoadFailedWarning => Get("raster.modelLoadFailedWarning", "Model asset path is set but the asset could not be loaded. Reassign a Sentis ModelAsset.");
-            public static string ColorCountField => Get("raster.colorCountField", "Color Count");
-            public static string QuantMethodField => Get("raster.quantMethodField", "Quant Method");
-            public static string SimplifyToleranceField => Get("raster.simplifyToleranceField", "Simplify Tolerance");
-            public static string MinRegionAreaField => Get("raster.minRegionAreaField", "Min Region Area");
-            public static string ThresholdModeField => Get("raster.thresholdModeField", "Threshold Mode");
-            public static string TraceHolesField => Get("raster.traceHolesField", "Trace Holes");
-            public static string TurdSizeField => Get("raster.turdSizeField", "Turd Size");
-            public static string AlphaMaxField => Get("raster.alphaMaxField", "Alpha Max");
-            public static string OptToleranceField => Get("raster.optToleranceField", "Opt Tolerance");
-            public static string BezierMaxErrorField => Get("raster.bezierMaxErrorField", "Bezier Max Error");
-            public static string CornerAngleField => Get("raster.cornerAngleField", "Corner Angle");
-            public static string MinSegmentLengthField => Get("raster.minSegmentLengthField", "Min Segment Length");
-            public static string NeuralModelField => Get("raster.neuralModelField", "Neural Model");
-            public static string ConfidenceThresholdField => Get("raster.confidenceThresholdField", "Confidence Threshold");
-            public static string MaxCurvesField => Get("raster.maxCurvesField", "Max Curves");
-            public static string SuperpixelCountField => Get("raster.superpixelCountField", "Superpixel Count");
-            public static string CompactnessField => Get("raster.compactnessField", "Compactness");
-            public static string MergeThresholdField => Get("raster.mergeThresholdField", "Merge Threshold");
-            public static string SampleDensityField => Get("raster.sampleDensityField", "Sample Density");
-            public static string MaxCellsField => Get("raster.maxCellsField", "Max Cells");
-            public static string OutputModeField => Get("raster.outputModeField", "Output Mode");
-            public static string SegmentationModelField => Get("raster.segmentationModelField", "Segmentation Model");
-            public static string PerRegionAlgorithmField => Get("raster.perRegionAlgorithmField", "Per-Region Algorithm");
-            public static string BaseAlgorithmField => Get("raster.baseAlgorithmField", "Base Algorithm");
-            public static string ProgressWarmupShaders => Get("raster.progressWarmupShaders", "Warming up raster compute shaders");
-            public static string ComputeWarmupFailed(string message)
-                => string.Format(Get("raster.computeWarmupFailed", "SDFX raster compute warmup failed: {0}"), message);
-            public static string InferenceUsingFallback => Get("raster.inferenceUsingFallback", "Using fallback segmentation.");
-            public static string InferenceModelLoadFailed => Get("raster.inferenceModelLoadFailed", "Model load failed.");
-            public static string InferenceModelLoadFailedDetail(string reason)
-                => string.Format(Get("raster.inferenceModelLoadFailedDetail", "Model load failed: {0}"), reason);
-            public static string InferenceLogWarning(string message)
-                => string.Format(Get("raster.inferenceLogWarning", "SDFX raster inference: {0}"), message);
-            public static string InferenceModelActive => Get("raster.inferenceModelActive", "Model active.");
-            public static string AutoReasonNoSourceTexture => Get("raster.autoReason.noSourceTexture", "No source texture; using the general-purpose default.");
-            public static string AutoReasonPixelsUnreadable => Get("raster.autoReason.pixelsUnreadable", "Texture pixels could not be read; using the general-purpose default.");
-            public static string AutoReasonAlphaSilhouette(float transparentFraction, float opaqueCoverage)
-                => string.Format(
-                    Get(
-                        "raster.autoReason.alphaSilhouette",
-                        "Alpha silhouette: {0} transparent and one color covers {1} of opaque pixels → Suzuki–Abe alpha contours."),
-                    transparentFraction.ToString("P0", CultureInfo.InvariantCulture),
-                    opaqueCoverage.ToString("P0", CultureInfo.InvariantCulture));
-            public static string AutoReasonBlackWhiteArt(float binaryLumaFraction, float meanSaturation)
-                => string.Format(
-                    Get(
-                        "raster.autoReason.blackWhiteArt",
-                        "Black & white art: {0} of pixels near luma extremes, mean saturation {1} → Potrace binary tracing."),
-                    binaryLumaFraction.ToString("P0", CultureInfo.InvariantCulture),
-                    meanSaturation.ToString("F2", CultureInfo.InvariantCulture));
-            public static string AutoReasonFlatPixelArt(int colorCount, float colorCoverage, int paletteSize)
-                => string.Format(
-                    Get(
-                        "raster.autoReason.flatPixelArt",
-                        "Flat pixel art: {0} colors cover {1} with hard edges → Color Quant + Marching Squares ({2} colors)."),
-                    colorCount,
-                    colorCoverage.ToString("P0", CultureInfo.InvariantCulture),
-                    paletteSize);
-            public static string AutoReasonGeneralImage(int dominantColorCount, float softEdgeFraction, int paletteSize, bool useBezierFit)
-                => string.Format(
-                    Get(
-                        "raster.autoReason.generalImage",
-                        "General {0} image: ~{1} dominant colors, {2} soft edges → Hybrid Contour ({3} colors, bezier {4})."),
-                    dominantColorCount > 48 ? AutoKindContinuousTone : AutoKindFlatColor,
-                    dominantColorCount,
-                    softEdgeFraction.ToString("P0", CultureInfo.InvariantCulture),
-                    paletteSize,
-                    useBezierFit ? AutoBezierOn : AutoBezierOff);
-            public static string AutoKindContinuousTone => Get("raster.autoKind.continuousTone", "continuous-tone");
-            public static string AutoKindFlatColor => Get("raster.autoKind.flatColor", "flat-color");
-            public static string AutoBezierOn => Get("raster.autoBezier.on", "on");
-            public static string AutoBezierOff => Get("raster.autoBezier.off", "off");
-
-            public static string AlgorithmName(string algorithmKey, string fallback)
-                => Get($"raster.algorithm.{algorithmKey}.name", fallback);
-
-            public static string AlgorithmDescription(string algorithmKey, string fallback)
-                => Get($"raster.algorithm.{algorithmKey}.description", fallback);
-
-            public static string AlgorithmBestFor(string algorithmKey, string fallback)
-                => Get($"raster.algorithm.{algorithmKey}.bestFor", fallback);
         }
 
         public static class Parsing
@@ -967,10 +931,10 @@ namespace SDFX.VectorTextureCompiler.Core.Localization
             public static string RasterInferenceUnavailable => Get("parse.rasterInferenceUnavailable", "Neural raster modes require Unity Sentis.");
             public static string RasterModelLoadFailed => Get("parse.rasterModelLoadFailed", "Failed to load Sentis model.");
             public static string RasterModelLoadFailedDetail(string modelPath, string reason)
-                => string.Format(Get("parse.rasterModelLoadFailedDetail", "Sentis failed for '{0}': {1}. Using color-quant segmentation."), modelPath, reason);
+                => string.Format(Get("parse.rasterModelLoadFailedDetail", "Sentis failed for '{0}': {1}. Using color-quant."), modelPath, reason);
             public static string RasterModelActive(string modelName)
                 => string.Format(Get("parse.rasterModelActive", "Sentis model: {0}"), modelName);
-            public static string RasterUsingFallbackSegmentation => Get("parse.rasterUsingFallbackSegmentation", "No model assigned; using color-quant segmentation.");
+            public static string RasterUsingFallbackSegmentation => Get("parse.rasterUsingFallbackSegmentation", "No model assigned; using color-quant.");
             public static string RasterProgressLoadingImage => Get("parse.rasterProgressLoadingImage", "Loading raster image...");
             public static string RasterProgressGpuUpload => Get("parse.rasterProgressGpuUpload", "Uploading image to GPU...");
             public static string RasterProgressGpuWarmup => Get("parse.rasterProgressGpuWarmup", "Warming up GPU...");

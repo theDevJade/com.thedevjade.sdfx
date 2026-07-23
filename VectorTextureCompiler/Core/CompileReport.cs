@@ -14,11 +14,23 @@ namespace SDFX.VectorTextureCompiler.Core
         public string coordinateModel = string.Empty;
         public string rasterAlgorithm = string.Empty;
         public bool buildQuestVariant;
+        public bool aggressiveOcclusionClipping;
 
         public PrimitiveCountReport counts = new PrimitiveCountReport();
         public StageTimingReport timings = new StageTimingReport();
         public WarningReport warnings = new WarningReport();
         public List<ParseIssueReport> parseIssues = new List<ParseIssueReport>();
+        public DataTextureFormatReport dataTextureFormats;
+    }
+
+    [Serializable]
+    public sealed class DataTextureFormatReport
+    {
+        public string primitiveFormat = string.Empty;
+        public string gridLookupFormat = string.Empty;
+        public string gridIndexFormat = string.Empty;
+        public string pathFormat = string.Empty;
+        public bool usedHalfIndices;
     }
 
     [Serializable]
@@ -30,6 +42,9 @@ namespace SDFX.VectorTextureCompiler.Core
         public int quantized;
         public int final;
         public int pathEdges;
+        public int bakedPaths;
+        public int gridWidth;
+        public int gridHeight;
     }
 
     [Serializable]

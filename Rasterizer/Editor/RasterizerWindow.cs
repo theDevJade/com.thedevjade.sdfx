@@ -13,36 +13,37 @@ namespace SDFX.Rasterizer.Editor
 
         private Texture2D sourceTexture;
         private string outputDirectory = string.Empty;
-        private Color backgroundColor = Color.white;
-        private bool writeFlatPreview = true;
         private bool settingsFoldout = true;
         private Vector2 scroll;
         private string lastStatus = string.Empty;
         private string lastSvgPath = string.Empty;
-        private Texture2D lastPreview;
-        private readonly RasterParsingOptions options = new RasterParsingOptions
-        {
-            Algorithm = RasterVectorizationAlgorithm.HybridSegmentContourBezierSdf,
-            UseComputeAcceleration = true,
-            ColorQuant = { ColorCount = 32 },
-            Hybrid = { SimplifyTolerance = 0.5f, MinRegionArea = 12 }
-        };
+        private readonly RasterParsingOptions options = new RasterParsingOptions();
 
         [MenuItem(SdfxLanguage.Menu.OpenRasterizer, false, 100)]
         public static void Open()
         {
+            if (!NativeDllConsent.EnsureAccepted())
+            {
+                return;
+            }
+
             var window = GetWindow<RasterizerWindow>();
             window.titleContent = new GUIContent(SdfxLanguage.Rasterizer.WindowTitle);
             window.minSize = new Vector2(420f, 480f);
         }
 
-        private void OnEnable() => LoadSettings();
-
-        private void OnDisable()
+        private void OnEnable()
         {
-            SaveSettings();
-            ClearPreview();
+            if (!NativeDllConsent.EnsureAccepted())
+            {
+                EditorApplication.delayCall += Close;
+                return;
+            }
+
+            LoadSettings();
         }
+
+        private void OnDisable() => SaveSettings();
 
         private void OnGUI()
         {
@@ -87,12 +88,6 @@ namespace SDFX.Rasterizer.Editor
                 }
             }
 
-            writeFlatPreview = EditorGUILayout.Toggle(SdfxLanguage.Rasterizer.WriteFlatPreviewField, writeFlatPreview);
-            if (writeFlatPreview)
-            {
-                backgroundColor = EditorGUILayout.ColorField(SdfxLanguage.Rasterizer.FlatPreviewBackgroundField, backgroundColor);
-            }
-
             settingsFoldout = EditorGUILayout.Foldout(
                 settingsFoldout,
                 SdfxLanguage.Rasterizer.VectorizationSettingsHeader,
@@ -102,44 +97,33 @@ namespace SDFX.Rasterizer.Editor
             {
                 using (new EditorGUI.IndentLevelScope())
                 {
-                    var newAlgorithm = (RasterVectorizationAlgorithm)EditorGUILayout.EnumPopup(
-                        SdfxLanguage.Rasterizer.AlgorithmField,
-                        options.Algorithm);
-                    if (newAlgorithm != options.Algorithm)
-                    {
-                        options.Algorithm = newAlgorithm;
-                    }
-
-                    RasterAlgorithmUI.DrawAlgorithmInfo(options.Algorithm);
-                    EditorGUILayout.Space(4f);
-                    RasterAlgorithmUI.DrawAlgorithmSettings(options);
-                    EditorGUILayout.Space(4f);
-                    EditorGUILayout.LabelField(SdfxLanguage.Rasterizer.CommonSettingsLabel, EditorStyles.miniBoldLabel);
-                    options.UseComputeAcceleration = EditorGUILayout.Toggle(
-                        SdfxLanguage.Rasterizer.UseComputeAccelerationField,
-                        options.UseComputeAcceleration);
-                    options.MinAlpha = EditorGUILayout.Slider(SdfxLanguage.Rasterizer.MinAlphaField, options.MinAlpha, 0f, 1f);
-                    options.MaxPrimitives = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.MaxPathsField, options.MaxPrimitives);
-                    if (UsesEdgeSampling(options.Algorithm))
-                    {
-                        options.EdgeThreshold = EditorGUILayout.Slider(
-                            SdfxLanguage.Rasterizer.EdgeThresholdField,
-                            options.EdgeThreshold,
-                            0f,
-                            2f);
-                        options.SampleStride = EditorGUILayout.IntField(
-                            SdfxLanguage.Rasterizer.SampleStrideField,
-                            options.SampleStride);
-                        options.UseTiling = EditorGUILayout.Toggle(SdfxLanguage.Rasterizer.UseTilingField, options.UseTiling);
-                        if (options.UseTiling)
-                        {
-                            options.TileSize = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.TileSizeField, options.TileSize);
-                            options.TileOverlap = EditorGUILayout.IntField(SdfxLanguage.Rasterizer.TileOverlapField, options.TileOverlap);
-                            options.AutoTileMinDimension = EditorGUILayout.IntField(
-                                SdfxLanguage.Rasterizer.AutoTileMinDimensionField,
-                                options.AutoTileMinDimension);
-                        }
-                    }
+                    options.ColorMode = (RasterColorMode)EditorGUILayout.EnumPopup(
+                        SdfxLanguage.Rasterizer.ColorModeField,
+                        options.ColorMode);
+                    options.CurveMode = (RasterCurveMode)EditorGUILayout.EnumPopup(
+                        SdfxLanguage.Rasterizer.CurveModeField,
+                        options.CurveMode);
+                    options.FilterSpeckle = EditorGUILayout.IntField(
+                        SdfxLanguage.Rasterizer.FilterSpeckleField,
+                        options.FilterSpeckle);
+                    options.CornerThreshold = EditorGUILayout.IntField(
+                        SdfxLanguage.Rasterizer.CornerThresholdField,
+                        options.CornerThreshold);
+                    options.SpliceThreshold = EditorGUILayout.IntField(
+                        SdfxLanguage.Rasterizer.SpliceThresholdField,
+                        options.SpliceThreshold);
+                    options.Precision = EditorGUILayout.IntSlider(
+                        SdfxLanguage.Rasterizer.PrecisionField,
+                        options.Precision,
+                        0,
+                        8);
+                    options.SimplifyTolerance = EditorGUILayout.DoubleField(
+                        SdfxLanguage.Rasterizer.SimplifyToleranceField,
+                        options.SimplifyTolerance);
+                    options.MinSimilarity = EditorGUILayout.DoubleField(
+                        SdfxLanguage.Rasterizer.MinSimilarityField,
+                        options.MinSimilarity);
+                    EditorGUILayout.HelpBox(SdfxLanguage.Rasterizer.MinSimilarityHelp, MessageType.None);
                 }
             }
 
@@ -172,18 +156,15 @@ namespace SDFX.Rasterizer.Editor
                     }
                 }
             }
-
-            if (lastPreview != null)
-            {
-                EditorGUILayout.Space(4f);
-                EditorGUILayout.LabelField(SdfxLanguage.Rasterizer.PreviewLabel, EditorStyles.boldLabel);
-                var rect = GUILayoutUtility.GetRect(256f, 256f, GUILayout.ExpandWidth(true));
-                EditorGUI.DrawPreviewTexture(rect, lastPreview, null, ScaleMode.ScaleToFit);
-            }
         }
 
         private void Convert()
         {
+            if (!NativeDllConsent.EnsureAccepted())
+            {
+                return;
+            }
+
             if (sourceTexture == null)
             {
                 lastStatus = SdfxLanguage.Rasterizer.StatusSelectSource;
@@ -204,22 +185,17 @@ namespace SDFX.Rasterizer.Editor
             EnsureAssetFolder(folder);
             var svgPath = Path.Combine(folder, sourceName + ".svg").Replace("\\", "/");
 
-            ClearPreview();
             var result = RasterToSvg.ExportToFile(sourceTexture, svgPath, CloneOptions(options));
             if (!result.Success)
             {
                 RasterToSvg.DestroyPreview(result);
-                lastStatus = SdfxLanguage.Rasterizer.StatusConversionFailed;
+                lastStatus = result.Issues.Count > 0
+                    ? result.Issues[0].Message
+                    : SdfxLanguage.Rasterizer.StatusConversionFailed;
                 lastSvgPath = string.Empty;
                 return;
             }
 
-            if (writeFlatPreview && result.OverlayPreview != null)
-            {
-                RasterFlatExport.Write(folder, sourceName, result.OverlayPreview, backgroundColor);
-            }
-
-            lastPreview = result.OverlayPreview;
             lastSvgPath = svgPath;
             lastStatus = SdfxLanguage.Rasterizer.StatusConversionSuccess(svgPath, result.PathCount);
             SaveSettings();
@@ -286,47 +262,18 @@ namespace SDFX.Rasterizer.Editor
             }
         }
 
-        private void ClearPreview()
-        {
-            if (lastPreview != null)
-            {
-                DestroyImmediate(lastPreview);
-                lastPreview = null;
-            }
-        }
-
-        private static bool UsesEdgeSampling(RasterVectorizationAlgorithm algorithm)
-        {
-            return algorithm == RasterVectorizationAlgorithm.GradientEdgeVectorization
-                || algorithm == RasterVectorizationAlgorithm.AdaptiveBezierFitting
-                || algorithm == RasterVectorizationAlgorithm.VoronoiDelaunay;
-        }
-
         private static RasterParsingOptions CloneOptions(RasterParsingOptions source)
         {
             return new RasterParsingOptions
             {
-                Algorithm = source.Algorithm,
-                EdgeThreshold = Mathf.Clamp(source.EdgeThreshold, 0f, 2f),
-                MinAlpha = Mathf.Clamp01(source.MinAlpha),
-                SampleStride = Mathf.Max(1, source.SampleStride),
-                MaxPrimitives = Mathf.Max(1, source.MaxPrimitives),
-                UseComputeAcceleration = source.UseComputeAcceleration,
-                UseTiling = source.UseTiling,
-                TileSize = Mathf.Max(64, source.TileSize),
-                TileOverlap = Mathf.Clamp(source.TileOverlap, 0, 8),
-                AutoTileMinDimension = Mathf.Max(64, source.AutoTileMinDimension),
-                ColorQuant = source.ColorQuant,
-                Contour = source.Contour,
-                Potrace = source.Potrace,
-                Bezier = source.Bezier,
-                Neural = source.Neural,
-                Superpixel = source.Superpixel,
-                Voronoi = source.Voronoi,
-                Gradient = source.Gradient,
-                Hybrid = source.Hybrid,
-                NeuralHybrid = source.NeuralHybrid,
-                Lod = source.Lod
+                ColorMode = source.ColorMode,
+                CurveMode = source.CurveMode,
+                FilterSpeckle = Mathf.Max(0, source.FilterSpeckle),
+                CornerThreshold = source.CornerThreshold,
+                SpliceThreshold = source.SpliceThreshold,
+                Precision = Mathf.Clamp(source.Precision, 0, 8),
+                SimplifyTolerance = Math.Max(0.0, source.SimplifyTolerance),
+                MinSimilarity = Math.Max(0.0, source.MinSimilarity)
             };
         }
 
@@ -334,47 +281,29 @@ namespace SDFX.Rasterizer.Editor
         {
             Set("sourceTexture", AssetDatabase.GetAssetPath(sourceTexture));
             Set("outputDirectory", outputDirectory);
-            Set("writeFlatPreview", writeFlatPreview.ToString());
-            Set("backgroundColor", "#" + ColorUtility.ToHtmlStringRGBA(backgroundColor));
-            Set("algorithm", ((int)options.Algorithm).ToString());
-            Set("useCompute", options.UseComputeAcceleration.ToString());
-            Set("useTiling", options.UseTiling.ToString());
-            Set("edgeThreshold", options.EdgeThreshold.ToString(CultureInfo.InvariantCulture));
-            Set("minAlpha", options.MinAlpha.ToString(CultureInfo.InvariantCulture));
-            Set("sampleStride", options.SampleStride.ToString());
-            Set("maxPrimitives", options.MaxPrimitives.ToString());
-            Set("tileSize", options.TileSize.ToString());
-            Set("tileOverlap", options.TileOverlap.ToString());
-            Set("autoTileMin", options.AutoTileMinDimension.ToString());
-            Set("colorCount", options.ColorQuant.ColorCount.ToString());
-            Set("quantMethod", ((int)options.ColorQuant.Method).ToString());
-            Set("simplifyTolerance", options.ColorQuant.SimplifyTolerance.ToString(CultureInfo.InvariantCulture));
+            Set("colorMode", ((int)options.ColorMode).ToString());
+            Set("curveMode", ((int)options.CurveMode).ToString());
+            Set("filterSpeckle", options.FilterSpeckle.ToString());
+            Set("cornerThreshold", options.CornerThreshold.ToString());
+            Set("spliceThreshold", options.SpliceThreshold.ToString());
+            Set("precision", options.Precision.ToString());
+            Set("simplifyTolerance", options.SimplifyTolerance.ToString(CultureInfo.InvariantCulture));
+            Set("minSimilarity", options.MinSimilarity.ToString(CultureInfo.InvariantCulture));
         }
 
         private void LoadSettings()
         {
             sourceTexture = LoadAsset<Texture2D>("sourceTexture");
             outputDirectory = Get("outputDirectory", outputDirectory);
-            writeFlatPreview = GetBool("writeFlatPreview", writeFlatPreview);
-            var bgHex = Get("backgroundColor", string.Empty);
-            if (!string.IsNullOrWhiteSpace(bgHex) && ColorUtility.TryParseHtmlString(bgHex, out var parsedBg))
-            {
-                backgroundColor = parsedBg;
-            }
 
-            options.Algorithm = (RasterVectorizationAlgorithm)GetInt("algorithm", (int)options.Algorithm);
-            options.UseComputeAcceleration = GetBool("useCompute", options.UseComputeAcceleration);
-            options.UseTiling = GetBool("useTiling", options.UseTiling);
-            options.EdgeThreshold = GetFloat("edgeThreshold", options.EdgeThreshold);
-            options.MinAlpha = GetFloat("minAlpha", options.MinAlpha);
-            options.SampleStride = GetInt("sampleStride", options.SampleStride);
-            options.MaxPrimitives = GetInt("maxPrimitives", options.MaxPrimitives);
-            options.TileSize = GetInt("tileSize", options.TileSize);
-            options.TileOverlap = GetInt("tileOverlap", options.TileOverlap);
-            options.AutoTileMinDimension = GetInt("autoTileMin", options.AutoTileMinDimension);
-            options.ColorQuant.ColorCount = GetInt("colorCount", options.ColorQuant.ColorCount);
-            options.ColorQuant.Method = (RasterColorQuantMethod)GetInt("quantMethod", (int)options.ColorQuant.Method);
-            options.ColorQuant.SimplifyTolerance = GetFloat("simplifyTolerance", options.ColorQuant.SimplifyTolerance);
+            options.ColorMode = (RasterColorMode)GetInt("colorMode", (int)options.ColorMode);
+            options.CurveMode = (RasterCurveMode)GetInt("curveMode", (int)options.CurveMode);
+            options.FilterSpeckle = GetInt("filterSpeckle", options.FilterSpeckle);
+            options.CornerThreshold = GetInt("cornerThreshold", options.CornerThreshold);
+            options.SpliceThreshold = GetInt("spliceThreshold", options.SpliceThreshold);
+            options.Precision = GetInt("precision", options.Precision);
+            options.SimplifyTolerance = GetDouble("simplifyTolerance", options.SimplifyTolerance);
+            options.MinSimilarity = GetDouble("minSimilarity", options.MinSimilarity);
         }
 
         private static void Set(string key, string value)
@@ -386,17 +315,14 @@ namespace SDFX.Rasterizer.Editor
         private static int GetInt(string key, int fallback)
             => int.TryParse(EditorUserSettings.GetConfigValue(SettingsPrefix + key), out var parsed) ? parsed : fallback;
 
-        private static float GetFloat(string key, float fallback)
-            => float.TryParse(
+        private static double GetDouble(string key, double fallback)
+            => double.TryParse(
                 EditorUserSettings.GetConfigValue(SettingsPrefix + key),
                 NumberStyles.Float,
                 CultureInfo.InvariantCulture,
                 out var parsed)
                 ? parsed
                 : fallback;
-
-        private static bool GetBool(string key, bool fallback)
-            => bool.TryParse(EditorUserSettings.GetConfigValue(SettingsPrefix + key), out var parsed) ? parsed : fallback;
 
         private static T LoadAsset<T>(string key) where T : UnityEngine.Object
         {
